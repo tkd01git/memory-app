@@ -1,8 +1,0 @@
-{
-  "name": "memory-shared-app",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "googleapis": "^144.0.0"
-  }
-}
