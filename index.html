@@ -43,22 +43,20 @@
             <div class="panel-header panel-header-column">
               <div>
                 <h2 id="detailDateLabel">日付を選択</h2>
-                <p class="subtext">タイトル・メモ・写真1枚を記録できます。</p>
               </div>
             </div>
 
             <form id="dayEntryForm" class="stack">
               <label class="field-label" for="dayTitleInput">タイトル</label>
-              <input id="dayTitleInput" type="text" maxlength="100" placeholder="例：夜景を見に行った" />
+              <input id="dayTitleInput" type="text" maxlength="100" placeholder="" />
 
               <label class="field-label" for="dayNoteInput">メモ</label>
-              <textarea id="dayNoteInput" rows="5" maxlength="500" placeholder="その日のことを自由に記録"></textarea>
+              <textarea id="dayNoteInput" rows="5" maxlength="500" placeholder=""></textarea>
 
               <label class="field-label" for="photoInput">写真</label>
-              <input id="photoInput" type="file" accept="image/*" />
-              <div id="photoPreviewGrid" class="photo-grid single-photo-grid"></div>
+              <input id="photoInput" type="file" accept="image/*" multiple />
+              <div id="photoPreviewGrid" class="photo-grid"></div>
               <div id="photoEmpty" class="photo-empty">写真はまだありません</div>
-              <p class="hint-text">iPhoneの写真は自動でJPEG圧縮して保存します。</p>
 
               <div class="form-actions">
                 <button id="saveDayEntryBtn" class="primary-btn" type="submit">保存</button>
@@ -72,7 +70,6 @@
           <div class="panel-header">
             <div>
               <h2>やったこと</h2>
-              <p class="subtext">記録した内容が新しい順に並びます。</p>
             </div>
             <span id="doneCount" class="badge">0</span>
           </div>
@@ -85,20 +82,16 @@
           <div class="panel-header">
             <div>
               <h2>やりたいことリスト</h2>
-              <p class="subtext">追加日とコメントも一緒に残せます。</p>
             </div>
             <span id="wishCount" class="badge">0</span>
           </div>
 
           <form id="wishForm" class="stack wish-form">
             <label class="field-label" for="wishInput">やりたいこと</label>
-            <input id="wishInput" type="text" maxlength="120" placeholder="例：海の見えるホテルに泊まる" />
-
-            <label class="field-label" for="wishDateInput">日付</label>
-            <input id="wishDateInput" type="date" />
+            <input id="wishInput" type="text" maxlength="120" placeholder="" />
 
             <label class="field-label" for="wishCommentInput">コメント</label>
-            <textarea id="wishCommentInput" rows="4" maxlength="300" placeholder="行きたい理由やメモ"></textarea>
+            <textarea id="wishCommentInput" rows="4" maxlength="300" placeholder=""></textarea>
 
             <div class="form-actions">
               <button class="primary-btn" type="submit">追加</button>
