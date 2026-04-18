@@ -66,25 +66,10 @@ function normalizeData(data) {
   const dayEntries = data.dayEntries && typeof data.dayEntries === 'object'
     ? Object.fromEntries(
         Object.entries(data.dayEntries)
-          .map(([dateKey, entry]) => [dateKey, normalizeDayEntry(dateKey, entry)])
+          .map(([dateKey, entry]) => [dateKey, normalizeDayEntry(entry)])
           .filter(([, entry]) => entry)
       )
     : {};
-
-  if (Array.isArray(data.dones)) {
-    data.dones.forEach(item => {
-      const dateKey = normalizeDateKey(item.date || item.doneDate || item.movedAt || item.createdAt);
-      if (!dateKey) return;
-      if (!dayEntries[dateKey]) {
-        dayEntries[dateKey] = normalizeDayEntry(dateKey, {
-          title: item.text || '記録',
-          note: item.note || '',
-          updatedAt: item.movedAt || item.createdAt || new Date().toISOString(),
-          photo: null
-        });
-      }
-    });
-  }
 
   return { wishes, dayEntries };
 }
@@ -102,7 +87,7 @@ function normalizeWish(item) {
   };
 }
 
-function normalizeDayEntry(dateKey, entry) {
+function normalizeDayEntry(entry) {
   if (!entry || typeof entry !== 'object') return null;
 
   let photo = null;
@@ -114,7 +99,7 @@ function normalizeDayEntry(dateKey, entry) {
 
   return {
     title: entry.title || '',
-    note: entry.note || entry.doneItems || '',
+    note: entry.note || '',
     photo,
     updatedAt: entry.updatedAt || new Date().toISOString()
   };
@@ -211,17 +196,13 @@ async function persistToDriveSilently() {
 }
 
 async function uploadDayPhoto(dateKey, pendingPhoto) {
-  if (!dateKey || !pendingPhoto?.dataUrl) {
-    throw new Error('日付または画像データが不足しています。');
-  }
+  if (!dateKey) throw new Error('保存先の日付がありません。');
+  if (!pendingPhoto?.dataUrl) throw new Error('画像データがありません。');
 
   const payload = {
     date: dateKey,
-    dateKey,
-    imageData: pendingPhoto.dataUrl,
-    dataUrl: pendingPhoto.dataUrl,
+    base64DataUrl: pendingPhoto.dataUrl,
     originalFileName: pendingPhoto.originalFileName,
-    fileName: pendingPhoto.originalFileName,
     mimeType: pendingPhoto.mimeType
   };
 
@@ -231,12 +212,19 @@ async function uploadDayPhoto(dateKey, pendingPhoto) {
     body: JSON.stringify(payload)
   });
 
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || '写真アップロードに失敗しました。');
+  const text = await response.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
   }
 
-  return response.json();
+  if (!response.ok) {
+    throw new Error(data?.error || text || '写真アップロードに失敗しました。');
+  }
+
+  return data.file || data;
 }
 
 function setActiveTab(tab) {
@@ -443,16 +431,6 @@ async function compressImageForUpload(file) {
         };
       }
     }
-  }
-
-  const fallback = drawCompressedJpeg(img, 820, 0.5);
-  if (dataUrlSizeBytes(fallback) <= MAX_UPLOAD_BYTES) {
-    return {
-      tempId: uid('pending_photo'),
-      dataUrl: fallback,
-      originalFileName: `${(file.name || 'photo').replace(/\.[^.]+$/, '') || 'photo'}.jpg`,
-      mimeType: 'image/jpeg'
-    };
   }
 
   throw new Error('写真が大きすぎます。別の写真で試してください。');
