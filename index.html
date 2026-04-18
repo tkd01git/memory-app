@@ -11,89 +11,123 @@
     <header class="topbar">
       <div>
         <p class="eyebrow">Shared Memories</p>
-        <h1>二人の思い出アプリ</h1>
-        <p class="subtext">やりたいこと、やったこと、その日の記録を1つの場所にまとめる。</p>
+        <h1>Shared Memories</h1>
       </div>
       <div class="topbar-actions">
-        <button id="driveConnectBtn" class="ghost-btn">Google Drive連携</button>
-        <button id="driveSyncBtn" class="primary-btn">Driveに保存</button>
+        <button id="driveConnectBtn" class="ghost-btn" type="button">Google Drive連携</button>
       </div>
     </header>
 
-    <main class="layout-grid">
-      <section class="panel stack">
-        <div class="panel-header">
-          <h2>やりたいことリスト</h2>
-          <span id="wishCount" class="badge">0</span>
+    <div class="tab-bar">
+      <button id="doneTabBtn" class="tab-btn active" type="button" data-tab="done">やったことリスト</button>
+      <button id="wishTabBtn" class="tab-btn" type="button" data-tab="wish">やりたいことリスト</button>
+    </div>
+
+    <main>
+      <section id="doneTab" class="tab-panel active">
+        <div class="done-layout">
+          <section class="panel calendar-panel">
+            <div class="panel-header panel-header-tight">
+              <div>
+                <h2>Calendar</h2>
+                <p id="monthLabel" class="subtext"></p>
+              </div>
+              <div class="calendar-nav">
+                <button id="prevMonthBtn" class="ghost-btn icon-btn" type="button">‹</button>
+                <button id="nextMonthBtn" class="ghost-btn icon-btn" type="button">›</button>
+              </div>
+            </div>
+            <div class="calendar-weekdays" id="weekdayRow"></div>
+            <div id="calendarGrid" class="calendar-grid"></div>
+          </section>
+
+          <section class="panel day-form-panel">
+            <div class="panel-header panel-header-column">
+              <div>
+                <h2 id="detailDateLabel">日付を選択</h2>
+                <p class="subtext">タイトル・メモ・写真を記録できます。</p>
+              </div>
+            </div>
+
+            <form id="dayEntryForm" class="stack">
+              <label class="field-label" for="dayTitleInput">タイトル</label>
+              <input id="dayTitleInput" type="text" maxlength="100" placeholder="例：京都で夜カフェに行った" />
+
+              <label class="field-label" for="dayNoteInput">メモ</label>
+              <textarea id="dayNoteInput" rows="5" maxlength="500" placeholder="その日のことを自由に記録"></textarea>
+
+              <label class="field-label" for="photoInput">写真</label>
+              <input id="photoInput" type="file" accept="image/*" multiple />
+              <div id="photoPreviewGrid" class="photo-grid"></div>
+              <div id="photoEmpty" class="photo-empty">写真はまだありません</div>
+
+              <div class="form-actions">
+                <button id="saveDayEntryBtn" class="primary-btn" type="submit">保存</button>
+                <button id="clearDayEntryBtn" class="ghost-btn" type="button">入力をクリア</button>
+              </div>
+            </form>
+          </section>
         </div>
-        <form id="wishForm" class="inline-form">
-          <input id="wishInput" type="text" placeholder="例：温泉旅行に行く" maxlength="120" />
-          <button class="primary-btn" type="submit">追加</button>
-        </form>
-        <div id="wishList" class="list-stack"></div>
+
+        <section class="panel done-history-panel">
+          <div class="panel-header">
+            <div>
+              <h2>やったこと</h2>
+              <p class="subtext">記録した内容が新しい順に並びます。</p>
+            </div>
+            <span id="doneCount" class="badge">0</span>
+          </div>
+          <div id="doneList" class="card-list"></div>
+        </section>
       </section>
 
-      <section class="panel stack">
-        <div class="panel-header">
-          <h2>やったことリスト</h2>
-          <span id="doneCount" class="badge">0</span>
-        </div>
-        <form id="doneForm" class="inline-form">
-          <input id="doneInput" type="text" placeholder="例：記念日ディナーに行った" maxlength="120" />
-          <button class="primary-btn" type="submit">追加</button>
-        </form>
-        <div id="doneList" class="list-stack"></div>
-      </section>
-
-      <section class="panel stack calendar-panel">
-        <div class="panel-header">
-          <div>
-            <h2>カレンダー</h2>
-            <p id="monthLabel" class="subtext"></p>
-          </div>
-          <div class="calendar-nav">
-            <button id="prevMonthBtn" class="ghost-btn" type="button">‹</button>
-            <button id="nextMonthBtn" class="ghost-btn" type="button">›</button>
-          </div>
-        </div>
-        <div class="calendar-weekdays" id="weekdayRow"></div>
-        <div id="calendarGrid" class="calendar-grid"></div>
-      </section>
-
-      <section class="panel stack detail-panel">
-        <div class="panel-header">
-          <div>
-            <h2 id="detailDateLabel">日付を選択</h2>
-            <p class="subtext">その日に何をしたかを記録できます。</p>
-          </div>
-          <span id="dayStatusBadge" class="badge muted">未記録</span>
-        </div>
-
-        <form id="dayEntryForm" class="stack">
-          <label class="field-label" for="dayTitleInput">タイトル</label>
-          <input id="dayTitleInput" type="text" maxlength="100" placeholder="例：桜を見に行った" />
-
-          <label class="field-label" for="dayNoteInput">メモ</label>
-          <textarea id="dayNoteInput" rows="4" maxlength="400" placeholder="この日にしたことや感想"></textarea>
-
-          <label class="field-label" for="dayDoneItemsInput">その日にやったこと</label>
-          <input id="dayDoneItemsInput" type="text" maxlength="180" placeholder="例：ランチ、映画、散歩" />
-
-          <label class="field-label" for="photoInput">写真1枚</label>
-          <input id="photoInput" type="file" accept="image/*" />
-          <div class="photo-preview-wrap">
-            <img id="photoPreview" class="photo-preview hidden" alt="その日の写真" />
-            <div id="photoEmpty" class="photo-empty">写真はまだありません</div>
+      <section id="wishTab" class="tab-panel">
+        <section class="panel wish-panel">
+          <div class="panel-header">
+            <div>
+              <h2>やりたいことリスト</h2>
+              <p class="subtext">追加日とコメントも一緒に残せます。</p>
+            </div>
+            <span id="wishCount" class="badge">0</span>
           </div>
 
-          <div class="form-actions">
-            <button id="saveDayEntryBtn" class="primary-btn" type="submit">この日の記録を保存</button>
-            <button id="clearDayEntryBtn" class="ghost-btn" type="button">入力を消す</button>
-          </div>
-        </form>
+          <form id="wishForm" class="stack wish-form">
+            <label class="field-label" for="wishInput">やりたいこと</label>
+            <input id="wishInput" type="text" maxlength="120" placeholder="例：海の見えるホテルに泊まる" />
+
+            <label class="field-label" for="wishDateInput">日付</label>
+            <input id="wishDateInput" type="date" />
+
+            <label class="field-label" for="wishCommentInput">コメント</label>
+            <textarea id="wishCommentInput" rows="4" maxlength="300" placeholder="行きたい理由やメモ"></textarea>
+
+            <div class="form-actions">
+              <button class="primary-btn" type="submit">追加</button>
+            </div>
+          </form>
+
+          <div id="wishList" class="card-list"></div>
+        </section>
       </section>
     </main>
   </div>
+
+  <dialog id="dayModal" class="day-modal">
+    <div class="day-modal-card">
+      <div class="panel-header">
+        <div>
+          <h2 id="modalDateLabel">日付詳細</h2>
+          <p id="modalSubtitle" class="subtext"></p>
+        </div>
+        <button id="closeModalBtn" class="ghost-btn icon-btn" type="button">×</button>
+      </div>
+      <div class="modal-section">
+        <div id="modalTitle" class="modal-title"></div>
+        <div id="modalNote" class="modal-note"></div>
+      </div>
+      <div id="modalPhotoGrid" class="photo-grid modal-photo-grid"></div>
+    </div>
+  </dialog>
 
   <script src="./js/app.js"></script>
 </body>
