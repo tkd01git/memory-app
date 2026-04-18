@@ -1,13 +1,16 @@
 const STORAGE_KEY = 'shared-memory-app-local';
 const weekNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const today = new Date();
+const MAX_UPLOAD_BYTES = 4_200_000;
+const JPEG_QUALITY_STEPS = [0.92, 0.88, 0.84, 0.8, 0.76, 0.72, 0.68, 0.64, 0.6, 0.56, 0.52];
+const MAX_DIMENSION_STEPS = [2200, 2000, 1800, 1600, 1440, 1280, 1152, 1024, 960, 896, 820];
 
 const state = {
   cursorYear: today.getFullYear(),
   cursorMonth: today.getMonth(),
   selectedDate: toDateKey(today),
   activeTab: 'done',
-  pendingPhotos: [],
+  pendingPhoto: null,
   data: loadLocalData()
 };
 
@@ -77,7 +80,7 @@ function normalizeData(data) {
           title: item.text || '記録',
           note: item.note || '',
           updatedAt: item.movedAt || item.createdAt || new Date().toISOString(),
-          photos: []
+          photo: null
         });
       }
     });
@@ -101,15 +104,18 @@ function normalizeWish(item) {
 
 function normalizeDayEntry(dateKey, entry) {
   if (!entry || typeof entry !== 'object') return null;
-  const singlePhoto = entry.photo?.fileId ? [{ ...entry.photo }] : [];
-  const photos = Array.isArray(entry.photos)
-    ? entry.photos.filter(photo => photo && photo.fileId)
-    : singlePhoto;
+
+  let photo = null;
+  if (entry.photo && entry.photo.fileId) {
+    photo = entry.photo;
+  } else if (Array.isArray(entry.photos) && entry.photos[0] && entry.photos[0].fileId) {
+    photo = entry.photos[0];
+  }
 
   return {
     title: entry.title || '',
     note: entry.note || entry.doneItems || '',
-    photos,
+    photo,
     updatedAt: entry.updatedAt || new Date().toISOString()
   };
 }
@@ -160,7 +166,7 @@ function getEntry(dateKey) {
 
 function hasDayContent(entry) {
   if (!entry) return false;
-  return Boolean(entry.title?.trim() || entry.note?.trim() || (entry.photos && entry.photos.length));
+  return Boolean(entry.title?.trim() || entry.note?.trim() || entry.photo?.fileId);
 }
 
 function buildPhotoUrl(fileId) {
@@ -184,7 +190,6 @@ async function loadFromDrive() {
     if (!response.ok) return;
     const remote = await response.json();
     if (!remote || !remote.data) return;
-
     state.data = normalizeData(remote.data);
     saveLocalData();
     renderAll();
@@ -278,32 +283,24 @@ function renderCalendar() {
 
 function renderPhotoPreviewGrid() {
   const entry = getEntry(state.selectedDate);
-  const storedPhotos = entry?.photos || [];
-  const pendingPhotos = state.pendingPhotos || [];
+  const photo = state.pendingPhoto || entry?.photo || null;
 
-  const tiles = [
-    ...storedPhotos.map(photo => ({
-      kind: 'stored',
-      fileId: photo.fileId,
-      name: photo.name || '',
-      src: buildPhotoUrl(photo.fileId)
-    })),
-    ...pendingPhotos.map(photo => ({
-      kind: 'pending',
-      tempId: photo.tempId,
-      name: photo.originalFileName || '',
-      src: photo.dataUrl
-    }))
-  ];
+  if (!photo) {
+    el.photoPreviewGrid.innerHTML = '';
+    el.photoEmpty.style.display = 'block';
+    return;
+  }
 
-  el.photoPreviewGrid.innerHTML = tiles.map(tile => `
+  const src = photo.fileId ? buildPhotoUrl(photo.fileId) : photo.dataUrl;
+  const photoId = photo.fileId || photo.tempId;
+
+  el.photoPreviewGrid.innerHTML = `
     <div class="photo-tile">
-      <img src="${escapeHtml(tile.src)}" alt="${escapeHtml(tile.name || 'photo')}" />
-      <button class="remove-photo-btn" type="button" data-action="remove-photo" data-kind="${tile.kind}" data-id="${escapeHtml(tile.fileId || tile.tempId)}">×</button>
+      <img src="${escapeHtml(src)}" alt="${escapeHtml(photo.name || photo.originalFileName || 'photo')}" />
+      <button class="remove-photo-btn" type="button" data-action="remove-photo" data-id="${escapeHtml(photoId)}">×</button>
     </div>
-  `).join('');
-
-  el.photoEmpty.style.display = tiles.length ? 'none' : 'block';
+  `;
+  el.photoEmpty.style.display = 'none';
 }
 
 function renderSelectedDay() {
@@ -330,7 +327,7 @@ function renderDoneList() {
           <div class="card-title">${escapeHtml(entry.title || 'タイトル未設定')}</div>
           <div class="card-meta">
             <span>${formatDateLabel(dateKey)}</span>
-            ${entry.photos?.length ? `<span>${entry.photos.length}枚の写真</span>` : ''}
+            ${entry.photo?.fileId ? '<span>写真あり</span>' : ''}
           </div>
           ${entry.note ? `<div class="card-note">${escapeHtml(entry.note)}</div>` : ''}
         </div>
@@ -338,7 +335,8 @@ function renderDoneList() {
           <button class="small-btn" type="button" data-action="open-day" data-date="${dateKey}">見る</button>
           <button class="small-btn" type="button" data-action="delete-day" data-date="${dateKey}">削除</button>
         </div>
-      </div>`).join('')
+      </div>
+    `).join('')
     : '<div class="empty-state">まだ記録がありません。</div>';
 }
 
@@ -358,7 +356,8 @@ function renderWishList() {
         <div class="card-actions">
           <button class="small-btn" type="button" data-action="delete-wish" data-id="${item.id}">削除</button>
         </div>
-      </div>`).join('')
+      </div>
+    `).join('')
     : '<div class="empty-state">まだ登録がありません。</div>';
 }
 
@@ -374,11 +373,80 @@ function ensureDayEntry(dateKey) {
     state.data.dayEntries[dateKey] = {
       title: '',
       note: '',
-      photos: [],
+      photo: null,
       updatedAt: new Date().toISOString()
     };
   }
   return state.data.dayEntries[dateKey];
+}
+
+function dataUrlSizeBytes(dataUrl) {
+  const base64 = dataUrl.split(',')[1] || '';
+  const padding = (base64.match(/=*$/) || [''])[0].length;
+  return Math.floor((base64.length * 3) / 4) - padding;
+}
+
+function loadImageFromDataUrl(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('画像の読み込みに失敗しました。'));
+    img.src = dataUrl;
+  });
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('ファイルの読み込みに失敗しました。'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function drawCompressedJpeg(img, maxDimension, quality) {
+  const scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
+  const width = Math.max(1, Math.round(img.width * scale));
+  const height = Math.max(1, Math.round(img.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d', { alpha: false });
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(img, 0, 0, width, height);
+  return canvas.toDataURL('image/jpeg', quality);
+}
+
+async function compressImageForUpload(file) {
+  const originalDataUrl = await readFileAsDataUrl(file);
+  const img = await loadImageFromDataUrl(originalDataUrl);
+
+  for (const maxDimension of MAX_DIMENSION_STEPS) {
+    for (const quality of JPEG_QUALITY_STEPS) {
+      const compressedDataUrl = drawCompressedJpeg(img, maxDimension, quality);
+      if (dataUrlSizeBytes(compressedDataUrl) <= MAX_UPLOAD_BYTES) {
+        return {
+          tempId: uid('pending_photo'),
+          dataUrl: compressedDataUrl,
+          originalFileName: `${(file.name || 'photo').replace(/\.[^.]+$/, '') || 'photo'}.jpg`,
+          mimeType: 'image/jpeg'
+        };
+      }
+    }
+  }
+
+  const fallback = drawCompressedJpeg(img, 820, 0.5);
+  if (dataUrlSizeBytes(fallback) <= MAX_UPLOAD_BYTES) {
+    return {
+      tempId: uid('pending_photo'),
+      dataUrl: fallback,
+      originalFileName: `${(file.name || 'photo').replace(/\.[^.]+$/, '') || 'photo'}.jpg`,
+      mimeType: 'image/jpeg'
+    };
+  }
+
+  throw new Error('写真が大きすぎます。別の写真で試してください。');
 }
 
 async function handleDayEntrySave(event) {
@@ -388,20 +456,16 @@ async function handleDayEntrySave(event) {
   entry.note = el.dayNoteInput.value.trim();
   entry.updatedAt = new Date().toISOString();
 
-  if (state.pendingPhotos.length) {
+  if (state.pendingPhoto) {
     try {
-      const uploadedPhotos = [];
-      for (const pendingPhoto of state.pendingPhotos) {
-        const file = await uploadDayPhoto(state.selectedDate, pendingPhoto);
-        uploadedPhotos.push({
-          fileId: file.id,
-          mimeType: file.mimeType,
-          name: file.name,
-          updatedAt: file.modifiedTime || new Date().toISOString()
-        });
-      }
-      entry.photos = [...(entry.photos || []), ...uploadedPhotos];
-      state.pendingPhotos = [];
+      const file = await uploadDayPhoto(state.selectedDate, state.pendingPhoto);
+      entry.photo = {
+        fileId: file.id,
+        mimeType: file.mimeType,
+        name: file.name,
+        updatedAt: file.modifiedTime || new Date().toISOString()
+      };
+      state.pendingPhoto = null;
       el.photoInput.value = '';
     } catch (error) {
       alert(`写真の保存に失敗しました: ${error.message}`);
@@ -422,29 +486,22 @@ function clearDayEntryInputs() {
   el.dayTitleInput.value = '';
   el.dayNoteInput.value = '';
   el.photoInput.value = '';
-  state.pendingPhotos = [];
+  state.pendingPhoto = null;
   renderSelectedDay();
 }
 
 async function handlePhotoChange(event) {
-  const files = Array.from(event.target.files || []);
-  if (!files.length) return;
+  const file = event.target.files?.[0];
+  if (!file) return;
 
-  const reads = files.map(file => new Promise(resolve => {
-    const reader = new FileReader();
-    reader.onload = () => resolve({
-      tempId: uid('pending_photo'),
-      dataUrl: reader.result,
-      originalFileName: file.name || '',
-      mimeType: file.type || ''
-    });
-    reader.readAsDataURL(file);
-  }));
-
-  const loadedPhotos = await Promise.all(reads);
-  state.pendingPhotos = [...state.pendingPhotos, ...loadedPhotos];
-  renderPhotoPreviewGrid();
-  el.photoInput.value = '';
+  try {
+    const compressed = await compressImageForUpload(file);
+    state.pendingPhoto = compressed;
+    renderPhotoPreviewGrid();
+  } catch (error) {
+    alert(error.message);
+    event.target.value = '';
+  }
 }
 
 function removeWish(id) {
@@ -457,7 +514,7 @@ function removeWish(id) {
 function removeDay(dateKey) {
   delete state.data.dayEntries[dateKey];
   if (dateKey === state.selectedDate) {
-    state.pendingPhotos = [];
+    state.pendingPhoto = null;
     el.photoInput.value = '';
   }
   saveLocalData();
@@ -465,41 +522,53 @@ function removeDay(dateKey) {
   persistToDriveSilently();
 }
 
-function handleRemovePhoto(kind, id) {
-  if (kind === 'pending') {
-    state.pendingPhotos = state.pendingPhotos.filter(photo => photo.tempId !== id);
+function handleRemovePhoto(id) {
+  if (state.pendingPhoto && state.pendingPhoto.tempId === id) {
+    state.pendingPhoto = null;
     renderPhotoPreviewGrid();
     return;
   }
 
   const entry = getEntry(state.selectedDate);
-  if (!entry) return;
-  entry.photos = (entry.photos || []).filter(photo => photo.fileId !== id);
-  saveLocalData();
-  renderPhotoPreviewGrid();
-  renderDoneList();
-  renderCalendar();
-  persistToDriveSilently();
+  if (!entry?.photo) return;
+  if (entry.photo.fileId === id) {
+    entry.photo = null;
+    saveLocalData();
+    renderPhotoPreviewGrid();
+    renderDoneList();
+    renderCalendar();
+    persistToDriveSilently();
+  }
 }
 
 function openDayModal(dateKey) {
   const entry = getEntry(dateKey);
-  if (!entry) return;
+
   state.selectedDate = dateKey;
+  state.pendingPhoto = null;
+  el.photoInput.value = '';
   renderCalendar();
   renderSelectedDay();
 
   el.modalDateLabel.textContent = formatDateLabel(dateKey);
-  el.modalSubtitle.textContent = entry.updatedAt ? `最終更新 ${new Date(entry.updatedAt).toLocaleString('ja-JP')}` : '';
-  el.modalTitle.textContent = entry.title || 'タイトル未設定';
-  el.modalNote.textContent = entry.note || 'メモはありません。';
-  el.modalPhotoGrid.innerHTML = (entry.photos || []).length
-    ? entry.photos.map(photo => `
-      <div class="photo-tile">
-        <img src="${escapeHtml(buildPhotoUrl(photo.fileId))}" alt="${escapeHtml(photo.name || 'photo')}" />
-      </div>
-    `).join('')
-    : '<div class="empty-state">写真はありません。</div>';
+
+  if (!entry || !hasDayContent(entry)) {
+    el.modalSubtitle.textContent = '';
+    el.modalTitle.textContent = 'まだ記録がありません。';
+    el.modalNote.textContent = '';
+    el.modalPhotoGrid.innerHTML = '';
+  } else {
+    el.modalSubtitle.textContent = entry.updatedAt ? `最終更新 ${new Date(entry.updatedAt).toLocaleString('ja-JP')}` : '';
+    el.modalTitle.textContent = entry.title || 'タイトル未設定';
+    el.modalNote.textContent = entry.note || '';
+    el.modalPhotoGrid.innerHTML = entry.photo?.fileId
+      ? `
+        <div class="photo-tile">
+          <img src="${escapeHtml(buildPhotoUrl(entry.photo.fileId))}" alt="${escapeHtml(entry.photo.name || 'photo')}" />
+        </div>
+      `
+      : '';
+  }
 
   if (typeof el.dayModal.showModal === 'function') {
     el.dayModal.showModal();
@@ -535,20 +604,15 @@ function bindEvents() {
     const button = event.target.closest('button');
     if (!button) return;
 
-    const { action, id, date, kind, tab } = button.dataset;
-    if (tab) setActiveTab(tab);
+    const { action, id, date } = button.dataset;
+
     if (action === 'delete-wish' && id) removeWish(id);
     if (action === 'open-day' && date) openDayModal(date);
     if (action === 'delete-day' && date) removeDay(date);
-    if (action === 'remove-photo' && id) handleRemovePhoto(kind, id);
+    if (action === 'remove-photo' && id) handleRemovePhoto(id);
 
     if (date && button.classList.contains('calendar-cell')) {
-      state.selectedDate = date;
-      state.pendingPhotos = [];
-      el.photoInput.value = '';
-      renderCalendar();
-      renderSelectedDay();
-      if (hasDayContent(getEntry(date))) openDayModal(date);
+      openDayModal(date);
     }
   });
 
@@ -569,6 +633,7 @@ function bindEvents() {
   el.dayEntryForm.addEventListener('submit', handleDayEntrySave);
   el.photoInput.addEventListener('change', handlePhotoChange);
   el.clearDayEntryBtn.addEventListener('click', clearDayEntryInputs);
+
   el.driveConnectBtn.addEventListener('click', async () => {
     try {
       await startDriveAuth();
@@ -578,10 +643,19 @@ function bindEvents() {
   });
 
   el.closeModalBtn.addEventListener('click', () => el.dayModal.close());
+
   el.dayModal.addEventListener('click', event => {
-    const rect = el.dayModal.querySelector('.day-modal-card').getBoundingClientRect();
-    const isInside = rect.top <= event.clientY && event.clientY <= rect.bottom && rect.left <= event.clientX && event.clientX <= rect.right;
-    if (!isInside) el.dayModal.close();
+    const card = el.dayModal.querySelector('.day-modal-card');
+    const rect = card.getBoundingClientRect();
+    const isInside =
+      rect.top <= event.clientY &&
+      event.clientY <= rect.bottom &&
+      rect.left <= event.clientX &&
+      event.clientX <= rect.right;
+
+    if (!isInside) {
+      el.dayModal.close();
+    }
   });
 }
 
