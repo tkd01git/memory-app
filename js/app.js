@@ -11,6 +11,7 @@ const state = {
   selectedDate: toDateKey(today),
   activeTab: 'done',
   pendingPhotos: [],
+  editingEventId: null,
   data: loadLocalData()
 };
 
@@ -40,13 +41,14 @@ const el = {
   photoPreviewGrid: document.getElementById('photoPreviewGrid'),
   photoEmpty: document.getElementById('photoEmpty'),
   clearDayEntryBtn: document.getElementById('clearDayEntryBtn'),
+  newEventBtn: document.getElementById('newEventBtn'),
+  dayEventList: document.getElementById('dayEventList'),
+  editingBadge: document.getElementById('editingBadge'),
   dayModal: document.getElementById('dayModal'),
   closeModalBtn: document.getElementById('closeModalBtn'),
   modalDateLabel: document.getElementById('modalDateLabel'),
   modalSubtitle: document.getElementById('modalSubtitle'),
-  modalTitle: document.getElementById('modalTitle'),
-  modalNote: document.getElementById('modalNote'),
-  modalPhotoGrid: document.getElementById('modalPhotoGrid')
+  modalEventList: document.getElementById('modalEventList')
 };
 
 function loadLocalData() {
@@ -88,17 +90,37 @@ function normalizeWish(item) {
 function normalizeDayEntry(entry) {
   if (!entry || typeof entry !== 'object') return null;
 
-  const photos = Array.isArray(entry.photos)
-    ? entry.photos.filter(photo => photo && photo.fileId)
-    : entry.photo && entry.photo.fileId
-      ? [entry.photo]
-      : [];
+  let events = [];
+  if (Array.isArray(entry.events)) {
+    events = entry.events.map(normalizeEvent).filter(Boolean);
+  } else {
+    const legacy = normalizeEvent({
+      id: entry.id || uid('event'),
+      title: entry.title || '',
+      note: entry.note || '',
+      photos: Array.isArray(entry.photos) ? entry.photos : entry.photo ? [entry.photo] : [],
+      updatedAt: entry.updatedAt || new Date().toISOString()
+    });
+    if (legacy) events = [legacy];
+  }
 
   return {
-    title: entry.title || '',
-    note: entry.note || '',
-    photos,
+    events,
     updatedAt: entry.updatedAt || new Date().toISOString()
+  };
+}
+
+function normalizeEvent(event) {
+  if (!event || typeof event !== 'object') return null;
+  const photos = Array.isArray(event.photos)
+    ? event.photos.filter(photo => photo && photo.fileId)
+    : [];
+  return {
+    id: event.id || uid('event'),
+    title: event.title || '',
+    note: event.note || '',
+    photos,
+    updatedAt: event.updatedAt || new Date().toISOString()
   };
 }
 
@@ -128,13 +150,26 @@ function escapeHtml(value) {
     .replaceAll("'", '&#39;');
 }
 
-function getEntry(dateKey) {
+function getDayEntry(dateKey) {
   return state.data.dayEntries[dateKey] || null;
+}
+
+function getEventsForDate(dateKey) {
+  return getDayEntry(dateKey)?.events || [];
+}
+
+function getEditingEvent() {
+  return getEventsForDate(state.selectedDate).find(event => event.id === state.editingEventId) || null;
+}
+
+function hasEventContent(event) {
+  if (!event) return false;
+  return Boolean(event.title?.trim() || event.note?.trim() || (event.photos && event.photos.length));
 }
 
 function hasDayContent(entry) {
   if (!entry) return false;
-  return Boolean(entry.title?.trim() || entry.note?.trim() || (entry.photos && entry.photos.length));
+  return Array.isArray(entry.events) && entry.events.some(hasEventContent);
 }
 
 function buildPhotoUrl(fileId) {
@@ -241,7 +276,7 @@ function renderCalendar() {
   for (let day = 1; day <= daysInMonth; day += 1) {
     const date = new Date(state.cursorYear, state.cursorMonth, day);
     const dateKey = toDateKey(date);
-    const entry = getEntry(dateKey);
+    const entry = getDayEntry(dateKey);
     const selected = dateKey === state.selectedDate;
     const hasContent = hasDayContent(entry);
     const todayMatch = dateKey === toDateKey(today);
@@ -261,9 +296,32 @@ function renderCalendar() {
   el.calendarGrid.innerHTML = cells.join('');
 }
 
+function renderDayEventList() {
+  const events = getEventsForDate(state.selectedDate);
+
+  if (!events.length) {
+    el.dayEventList.innerHTML = '<div class="empty-state">まだイベントがありません。</div>';
+    return;
+  }
+
+  el.dayEventList.innerHTML = events.map((event, index) => `
+    <div class="mini-card${event.id === state.editingEventId ? ' active' : ''}">
+      <div class="mini-card-main">
+        <div class="mini-card-title">${escapeHtml(event.title || `イベント ${index + 1}`)}</div>
+        <div class="mini-card-meta">
+          ${event.photos?.length ? `${event.photos.length}枚` : '写真なし'}
+        </div>
+      </div>
+      <button class="small-btn" type="button" data-action="edit-event" data-event-id="${event.id}">
+        編集
+      </button>
+    </div>
+  `).join('');
+}
+
 function renderPhotoPreviewGrid() {
-  const entry = getEntry(state.selectedDate);
-  const storedPhotos = entry?.photos || [];
+  const event = getEditingEvent();
+  const storedPhotos = event?.photos || [];
   const pendingPhotos = state.pendingPhotos || [];
 
   const tiles = [
@@ -298,10 +356,20 @@ function renderPhotoPreviewGrid() {
 }
 
 function renderSelectedDay() {
-  const entry = getEntry(state.selectedDate) || { title: '', note: '' };
   el.detailDateLabel.textContent = formatDateLabel(state.selectedDate);
-  el.dayTitleInput.value = entry.title || '';
-  el.dayNoteInput.value = entry.note || '';
+
+  const editingEvent = getEditingEvent();
+  if (editingEvent) {
+    el.editingBadge.textContent = '既存イベントを編集中';
+    el.dayTitleInput.value = editingEvent.title || '';
+    el.dayNoteInput.value = editingEvent.note || '';
+  } else {
+    el.editingBadge.textContent = '新しいイベントを作成中';
+    el.dayTitleInput.value = '';
+    el.dayNoteInput.value = '';
+  }
+
+  renderDayEventList();
   renderPhotoPreviewGrid();
 }
 
@@ -313,17 +381,19 @@ function getDoneEntries() {
 
 function renderDoneList() {
   const doneEntries = getDoneEntries();
-  el.doneCount.textContent = doneEntries.length;
+  el.doneCount.textContent = doneEntries.reduce((sum, [, entry]) => sum + entry.events.length, 0);
+
   el.doneList.innerHTML = doneEntries.length
     ? doneEntries.map(([dateKey, entry]) => `
       <div class="card-item">
         <div class="card-main">
-          <div class="card-title">${escapeHtml(entry.title || 'タイトル未設定')}</div>
+          <div class="card-title">${formatDateLabel(dateKey)}</div>
           <div class="card-meta">
-            <span>${formatDateLabel(dateKey)}</span>
-            ${entry.photos?.length ? `<span>${entry.photos.length}枚</span>` : ''}
+            <span>${entry.events.length}件のイベント</span>
           </div>
-          ${entry.note ? `<div class="card-note">${escapeHtml(entry.note)}</div>` : ''}
+          <div class="card-note">
+            ${entry.events.map((event, i) => `${i + 1}. ${escapeHtml(event.title || 'タイトル未設定')}`).join('<br>')}
+          </div>
         </div>
         <div class="card-actions">
           <button class="small-btn" type="button" data-action="open-day" data-date="${dateKey}">見る</button>
@@ -361,9 +431,7 @@ function renderAll() {
 function ensureDayEntry(dateKey) {
   if (!state.data.dayEntries[dateKey]) {
     state.data.dayEntries[dateKey] = {
-      title: '',
-      note: '',
-      photos: [],
+      events: [],
       updatedAt: new Date().toISOString()
     };
   }
@@ -429,12 +497,42 @@ async function compressImageForUpload(file) {
   throw new Error('写真が大きすぎます。別の写真で試してください。');
 }
 
+function startNewEventDraft() {
+  state.editingEventId = null;
+  state.pendingPhotos = [];
+  el.photoInput.value = '';
+  renderSelectedDay();
+}
+
+function startEditEvent(eventId) {
+  state.editingEventId = eventId;
+  state.pendingPhotos = [];
+  el.photoInput.value = '';
+  renderSelectedDay();
+}
+
 async function handleDayEntrySave(event) {
   event.preventDefault();
-  const entry = ensureDayEntry(state.selectedDate);
-  entry.title = el.dayTitleInput.value.trim();
-  entry.note = el.dayNoteInput.value.trim();
-  entry.updatedAt = new Date().toISOString();
+
+  const dayEntry = ensureDayEntry(state.selectedDate);
+  let targetEvent = getEditingEvent();
+
+  if (!targetEvent) {
+    targetEvent = {
+      id: uid('event'),
+      title: '',
+      note: '',
+      photos: [],
+      updatedAt: new Date().toISOString()
+    };
+    dayEntry.events.unshift(targetEvent);
+    state.editingEventId = targetEvent.id;
+  }
+
+  targetEvent.title = el.dayTitleInput.value.trim();
+  targetEvent.note = el.dayNoteInput.value.trim();
+  targetEvent.updatedAt = new Date().toISOString();
+  dayEntry.updatedAt = new Date().toISOString();
 
   if (state.pendingPhotos.length) {
     try {
@@ -448,7 +546,7 @@ async function handleDayEntrySave(event) {
           updatedAt: file.modifiedTime || new Date().toISOString()
         });
       }
-      entry.photos = [...(entry.photos || []), ...uploaded];
+      targetEvent.photos = [...(targetEvent.photos || []), ...uploaded];
       state.pendingPhotos = [];
       el.photoInput.value = '';
     } catch (error) {
@@ -457,8 +555,11 @@ async function handleDayEntrySave(event) {
     }
   }
 
-  if (!hasDayContent(entry)) {
+  dayEntry.events = dayEntry.events.filter(hasEventContent);
+
+  if (!dayEntry.events.length) {
     delete state.data.dayEntries[state.selectedDate];
+    state.editingEventId = null;
   }
 
   saveLocalData();
@@ -504,6 +605,7 @@ function removeDay(dateKey) {
   delete state.data.dayEntries[dateKey];
   if (dateKey === state.selectedDate) {
     state.pendingPhotos = [];
+    state.editingEventId = null;
     el.photoInput.value = '';
   }
   saveLocalData();
@@ -518,9 +620,9 @@ function handleRemovePhoto(kind, id) {
     return;
   }
 
-  const entry = getEntry(state.selectedDate);
-  if (!entry?.photos?.length) return;
-  entry.photos = entry.photos.filter(photo => photo.fileId !== id);
+  const targetEvent = getEditingEvent();
+  if (!targetEvent?.photos?.length) return;
+  targetEvent.photos = targetEvent.photos.filter(photo => photo.fileId !== id);
   saveLocalData();
   renderPhotoPreviewGrid();
   renderDoneList();
@@ -529,7 +631,7 @@ function handleRemovePhoto(kind, id) {
 }
 
 function openDayModal(dateKey) {
-  const entry = getEntry(dateKey);
+  const entry = getDayEntry(dateKey);
 
   state.selectedDate = dateKey;
   state.pendingPhotos = [];
@@ -541,20 +643,22 @@ function openDayModal(dateKey) {
 
   if (!entry || !hasDayContent(entry)) {
     el.modalSubtitle.textContent = '';
-    el.modalTitle.textContent = 'まだ記録がありません。';
-    el.modalNote.textContent = '';
-    el.modalPhotoGrid.innerHTML = '';
+    el.modalEventList.innerHTML = '<div class="empty-state">まだ記録がありません。</div>';
   } else {
-    el.modalSubtitle.textContent = entry.updatedAt ? `最終更新 ${new Date(entry.updatedAt).toLocaleString('ja-JP')}` : '';
-    el.modalTitle.textContent = entry.title || 'タイトル未設定';
-    el.modalNote.textContent = entry.note || '';
-    el.modalPhotoGrid.innerHTML = entry.photos?.length
-      ? entry.photos.map(photo => `
-        <div class="photo-tile">
-          <img src="${escapeHtml(buildPhotoUrl(photo.fileId))}" alt="${escapeHtml(photo.name || 'photo')}" />
+    el.modalSubtitle.textContent = `${entry.events.length}件のイベント`;
+    el.modalEventList.innerHTML = entry.events.map((event, index) => `
+      <div class="modal-event-card">
+        <div class="modal-event-title">${escapeHtml(event.title || `イベント ${index + 1}`)}</div>
+        <div class="modal-event-note">${escapeHtml(event.note || '')}</div>
+        <div class="photo-grid modal-photo-grid">
+          ${(event.photos || []).map(photo => `
+            <div class="photo-tile">
+              <img src="${escapeHtml(buildPhotoUrl(photo.fileId))}" alt="${escapeHtml(photo.name || 'photo')}" />
+            </div>
+          `).join('')}
         </div>
-      `).join('')
-      : '';
+      </div>
+    `).join('');
   }
 
   if (typeof el.dayModal.showModal === 'function') {
@@ -565,6 +669,8 @@ function openDayModal(dateKey) {
 function bindEvents() {
   el.doneTabBtn.addEventListener('click', () => setActiveTab('done'));
   el.wishTabBtn.addEventListener('click', () => setActiveTab('wish'));
+
+  el.newEventBtn.addEventListener('click', () => startNewEventDraft());
 
   el.wishForm.addEventListener('submit', async event => {
     event.preventDefault();
@@ -589,12 +695,13 @@ function bindEvents() {
     const button = event.target.closest('button');
     if (!button) return;
 
-    const { action, id, date, kind } = button.dataset;
+    const { action, id, date, kind, eventId } = button.dataset;
 
     if (action === 'delete-wish' && id) removeWish(id);
     if (action === 'open-day' && date) openDayModal(date);
     if (action === 'delete-day' && date) removeDay(date);
     if (action === 'remove-photo' && id) handleRemovePhoto(kind, id);
+    if (action === 'edit-event' && eventId) startEditEvent(eventId);
 
     if (date && button.classList.contains('calendar-cell')) {
       openDayModal(date);
