@@ -12,6 +12,7 @@ const state = {
   activeTab: 'done',
   pendingPhotos: [],
   editingEventId: null,
+  showCompletedWishes: true,
   data: loadLocalData()
 };
 
@@ -24,6 +25,8 @@ const el = {
   wishInput: document.getElementById('wishInput'),
   wishCommentInput: document.getElementById('wishCommentInput'),
   wishList: document.getElementById('wishList'),
+  completedWishList: document.getElementById('completedWishList'),
+  toggleCompletedBtn: document.getElementById('toggleCompletedBtn'),
   wishCount: document.getElementById('wishCount'),
   doneList: document.getElementById('doneList'),
   doneCount: document.getElementById('doneCount'),
@@ -53,7 +56,7 @@ const el = {
 
 function loadLocalData() {
   const raw = localStorage.getItem(STORAGE_KEY);
-  const fallback = { wishes: [], dayEntries: {} };
+  const fallback = { wishes: [], completedWishes: [], dayEntries: {} };
   if (!raw) return fallback;
   try {
     return normalizeData(JSON.parse(raw));
@@ -64,6 +67,9 @@ function loadLocalData() {
 
 function normalizeData(data) {
   const wishes = Array.isArray(data.wishes) ? data.wishes.map(normalizeWish).filter(Boolean) : [];
+  const completedWishes = Array.isArray(data.completedWishes)
+    ? data.completedWishes.map(normalizeCompletedWish).filter(Boolean)
+    : [];
   const dayEntries = data.dayEntries && typeof data.dayEntries === 'object'
     ? Object.fromEntries(
         Object.entries(data.dayEntries)
@@ -72,7 +78,7 @@ function normalizeData(data) {
       )
     : {};
 
-  return { wishes, dayEntries };
+  return { wishes, completedWishes, dayEntries };
 }
 
 function normalizeWish(item) {
@@ -84,6 +90,15 @@ function normalizeWish(item) {
     text: String(text),
     comment: item.comment || '',
     createdAt: item.createdAt || new Date().toISOString()
+  };
+}
+
+function normalizeCompletedWish(item) {
+  const normalized = normalizeWish(item);
+  if (!normalized) return null;
+  return {
+    ...normalized,
+    completedAt: item.completedAt || new Date().toISOString()
   };
 }
 
@@ -406,6 +421,7 @@ function renderDoneList() {
 
 function renderWishList() {
   el.wishCount.textContent = state.data.wishes.length;
+
   el.wishList.innerHTML = state.data.wishes.length
     ? state.data.wishes.map(item => `
       <div class="card-item">
@@ -414,11 +430,33 @@ function renderWishList() {
           ${item.comment ? `<div class="card-note">${escapeHtml(item.comment)}</div>` : ''}
         </div>
         <div class="card-actions">
+          <button class="small-btn" type="button" data-action="complete-wish" data-id="${item.id}">達成</button>
           <button class="small-btn" type="button" data-action="delete-wish" data-id="${item.id}">削除</button>
         </div>
       </div>
     `).join('')
     : '<div class="empty-state">まだ登録がありません。</div>';
+
+  el.toggleCompletedBtn.textContent = state.showCompletedWishes ? 'hide' : 'show';
+
+  if (!state.showCompletedWishes) {
+    el.completedWishList.innerHTML = '';
+    return;
+  }
+
+  el.completedWishList.innerHTML = state.data.completedWishes.length
+    ? state.data.completedWishes.map(item => `
+      <div class="card-item">
+        <div class="card-main">
+          <div class="card-title">${escapeHtml(item.text)}</div>
+          <div class="card-meta">
+            <span>達成日 ${new Date(item.completedAt).toLocaleDateString('ja-JP')}</span>
+          </div>
+          ${item.comment ? `<div class="card-note">${escapeHtml(item.comment)}</div>` : ''}
+        </div>
+      </div>
+    `).join('')
+    : '<div class="empty-state">まだ達成済みはありません。</div>';
 }
 
 function renderAll() {
@@ -497,11 +535,15 @@ async function compressImageForUpload(file) {
   throw new Error('写真が大きすぎます。別の写真で試してください。');
 }
 
-function startNewEventDraft() {
+function startNewEventDraft(prefillTitle = '') {
   state.editingEventId = null;
   state.pendingPhotos = [];
   el.photoInput.value = '';
   renderSelectedDay();
+  if (prefillTitle) {
+    el.dayTitleInput.value = prefillTitle;
+    el.dayNoteInput.value = '';
+  }
 }
 
 function startEditEvent(eventId) {
@@ -509,6 +551,28 @@ function startEditEvent(eventId) {
   state.pendingPhotos = [];
   el.photoInput.value = '';
   renderSelectedDay();
+}
+
+async function completeWish(id) {
+  const wish = state.data.wishes.find(item => item.id === id);
+  if (!wish) return;
+
+  state.data.wishes = state.data.wishes.filter(item => item.id !== id);
+  state.data.completedWishes.unshift({
+    ...wish,
+    completedAt: new Date().toISOString()
+  });
+
+  const todayKey = toDateKey(new Date());
+  state.selectedDate = todayKey;
+  state.cursorYear = new Date().getFullYear();
+  state.cursorMonth = new Date().getMonth();
+  setActiveTab('done');
+  startNewEventDraft(wish.text);
+
+  saveLocalData();
+  renderAll();
+  await persistToDriveSilently();
 }
 
 async function handleDayEntrySave(event) {
@@ -650,7 +714,7 @@ function openDayModal(dateKey) {
       <div class="modal-event-card">
         <div class="modal-event-title">${escapeHtml(event.title || `イベント ${index + 1}`)}</div>
         <div class="modal-event-note">${escapeHtml(event.note || '')}</div>
-        <div class="photo-grid modal-photo-grid">
+        <div class="modal-photo-grid">
           ${(event.photos || []).map(photo => `
             <div class="photo-tile">
               <img src="${escapeHtml(buildPhotoUrl(photo.fileId))}" alt="${escapeHtml(photo.name || 'photo')}" />
@@ -671,6 +735,11 @@ function bindEvents() {
   el.wishTabBtn.addEventListener('click', () => setActiveTab('wish'));
 
   el.newEventBtn.addEventListener('click', () => startNewEventDraft());
+
+  el.toggleCompletedBtn.addEventListener('click', () => {
+    state.showCompletedWishes = !state.showCompletedWishes;
+    renderWishList();
+  });
 
   el.wishForm.addEventListener('submit', async event => {
     event.preventDefault();
@@ -698,6 +767,7 @@ function bindEvents() {
     const { action, id, date, kind, eventId } = button.dataset;
 
     if (action === 'delete-wish' && id) removeWish(id);
+    if (action === 'complete-wish' && id) completeWish(id);
     if (action === 'open-day' && date) openDayModal(date);
     if (action === 'delete-day' && date) removeDay(date);
     if (action === 'remove-photo' && id) handleRemovePhoto(kind, id);
