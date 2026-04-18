@@ -211,15 +211,24 @@ async function persistToDriveSilently() {
 }
 
 async function uploadDayPhoto(dateKey, pendingPhoto) {
+  if (!dateKey || !pendingPhoto?.dataUrl) {
+    throw new Error('日付または画像データが不足しています。');
+  }
+
+  const payload = {
+    date: dateKey,
+    dateKey,
+    imageData: pendingPhoto.dataUrl,
+    dataUrl: pendingPhoto.dataUrl,
+    originalFileName: pendingPhoto.originalFileName,
+    fileName: pendingPhoto.originalFileName,
+    mimeType: pendingPhoto.mimeType
+  };
+
   const response = await fetch('/api/drive/photos/upload', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      dateKey,
-      dataUrl: pendingPhoto.dataUrl,
-      originalFileName: pendingPhoto.originalFileName,
-      mimeType: pendingPhoto.mimeType
-    })
+    body: JSON.stringify(payload)
   });
 
   if (!response.ok) {
