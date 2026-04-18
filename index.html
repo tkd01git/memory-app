@@ -16,8 +16,8 @@
     </header>
 
     <div class="tab-bar">
-      <button id="doneTabBtn" class="tab-btn active" type="button" data-tab="done">やったことリスト</button>
-      <button id="wishTabBtn" class="tab-btn" type="button" data-tab="wish">やりたいことリスト</button>
+      <button id="doneTabBtn" class="tab-btn active" type="button">やったことリスト</button>
+      <button id="wishTabBtn" class="tab-btn" type="button">やりたいことリスト</button>
     </div>
 
     <main>
@@ -46,7 +46,17 @@
               </div>
             </div>
 
+            <div class="event-manager">
+              <div class="event-manager-header">
+                <div class="section-title">その日のイベント</div>
+                <button id="newEventBtn" class="ghost-btn" type="button">新しい内容を追加</button>
+              </div>
+              <div id="dayEventList" class="mini-card-list"></div>
+            </div>
+
             <form id="dayEntryForm" class="stack">
+              <div id="editingBadge" class="editing-badge">新しいイベントを作成中</div>
+
               <label class="field-label" for="dayTitleInput">タイトル</label>
               <input id="dayTitleInput" type="text" maxlength="100" placeholder="" />
 
@@ -114,12 +124,7 @@
         <button id="closeModalBtn" class="ghost-btn icon-btn" type="button" aria-label="閉じる">×</button>
       </div>
 
-      <div class="modal-section">
-        <div id="modalTitle" class="modal-title"></div>
-        <div id="modalNote" class="modal-note"></div>
-      </div>
-
-      <div id="modalPhotoGrid" class="photo-grid modal-photo-grid"></div>
+      <div id="modalEventList" class="modal-event-list"></div>
     </div>
   </dialog>
 
