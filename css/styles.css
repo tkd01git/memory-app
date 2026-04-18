@@ -53,6 +53,17 @@ button {
   margin-bottom: 14px;
   min-height: 44px;
 }
+.app-brand {
+
+  font-size: 22px;
+
+  font-weight: 800;
+
+  letter-spacing: -0.02em;
+
+  color: var(--text);
+
+}
 
 .topbar-title-spacer {
   width: 1px;
