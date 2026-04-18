@@ -502,6 +502,19 @@ textarea:focus {
   gap: 8px;
 }
 
+.completed-section {
+  margin-top: 20px;
+  padding-top: 4px;
+}
+
+.completed-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
 .empty-state {
   border: 1px dashed #e9ddb0;
   border-radius: 16px;
@@ -545,7 +558,7 @@ textarea:focus {
 .modal-event-list {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 
 .modal-event-card {
@@ -561,6 +574,7 @@ textarea:focus {
   line-height: 1.45;
   margin-bottom: 8px;
   word-break: break-word;
+  text-align: center;
 }
 
 .modal-event-note {
@@ -569,12 +583,25 @@ textarea:focus {
   color: var(--text);
   white-space: pre-wrap;
   word-break: break-word;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
+  text-align: left;
 }
 
 .modal-photo-grid {
-  margin-top: 4px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;
+}
+
+.modal-photo-grid .photo-tile {
+  width: min(100%, 560px);
+  aspect-ratio: 4 / 3;
+}
+
+.modal-photo-grid .photo-tile img {
+  object-fit: contain;
+  background: #f8f1cf;
 }
 
 .wish-panel {
@@ -597,6 +624,10 @@ textarea:focus {
 
   .day-modal-card {
     width: min(96vw, 96vw);
+  }
+
+  .modal-photo-grid .photo-tile {
+    width: 100%;
   }
 }
 
@@ -621,7 +652,8 @@ textarea:focus {
 
   .card-item,
   .mini-card,
-  .event-manager-header {
+  .event-manager-header,
+  .completed-header {
     flex-direction: column;
     align-items: stretch;
   }
@@ -629,10 +661,14 @@ textarea:focus {
   .card-actions {
     width: 100%;
     flex-direction: row;
+    flex-wrap: wrap;
   }
 
-  .photo-grid,
-  .modal-photo-grid {
+  .photo-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .modal-photo-grid {
+    align-items: stretch;
   }
 }
