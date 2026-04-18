@@ -6,52 +6,112 @@ const state = {
   cursorYear: today.getFullYear(),
   cursorMonth: today.getMonth(),
   selectedDate: toDateKey(today),
-  pendingPhoto: null,
+  activeTab: 'done',
+  pendingPhotos: [],
   data: loadLocalData()
 };
 
 const el = {
+  doneTabBtn: document.getElementById('doneTabBtn'),
+  wishTabBtn: document.getElementById('wishTabBtn'),
+  doneTab: document.getElementById('doneTab'),
+  wishTab: document.getElementById('wishTab'),
   wishForm: document.getElementById('wishForm'),
   wishInput: document.getElementById('wishInput'),
+  wishDateInput: document.getElementById('wishDateInput'),
+  wishCommentInput: document.getElementById('wishCommentInput'),
   wishList: document.getElementById('wishList'),
   wishCount: document.getElementById('wishCount'),
-  doneForm: document.getElementById('doneForm'),
-  doneInput: document.getElementById('doneInput'),
   doneList: document.getElementById('doneList'),
   doneCount: document.getElementById('doneCount'),
   driveConnectBtn: document.getElementById('driveConnectBtn'),
-  driveSyncBtn: document.getElementById('driveSyncBtn'),
   monthLabel: document.getElementById('monthLabel'),
   weekdayRow: document.getElementById('weekdayRow'),
   calendarGrid: document.getElementById('calendarGrid'),
   prevMonthBtn: document.getElementById('prevMonthBtn'),
   nextMonthBtn: document.getElementById('nextMonthBtn'),
   detailDateLabel: document.getElementById('detailDateLabel'),
-  dayStatusBadge: document.getElementById('dayStatusBadge'),
   dayEntryForm: document.getElementById('dayEntryForm'),
   dayTitleInput: document.getElementById('dayTitleInput'),
   dayNoteInput: document.getElementById('dayNoteInput'),
-  dayDoneItemsInput: document.getElementById('dayDoneItemsInput'),
   photoInput: document.getElementById('photoInput'),
-  photoPreview: document.getElementById('photoPreview'),
+  photoPreviewGrid: document.getElementById('photoPreviewGrid'),
   photoEmpty: document.getElementById('photoEmpty'),
-  clearDayEntryBtn: document.getElementById('clearDayEntryBtn')
+  clearDayEntryBtn: document.getElementById('clearDayEntryBtn'),
+  dayModal: document.getElementById('dayModal'),
+  closeModalBtn: document.getElementById('closeModalBtn'),
+  modalDateLabel: document.getElementById('modalDateLabel'),
+  modalSubtitle: document.getElementById('modalSubtitle'),
+  modalTitle: document.getElementById('modalTitle'),
+  modalNote: document.getElementById('modalNote'),
+  modalPhotoGrid: document.getElementById('modalPhotoGrid')
 };
 
 function loadLocalData() {
   const raw = localStorage.getItem(STORAGE_KEY);
-  const fallback = { wishes: [], dones: [], dayEntries: {} };
+  const fallback = { wishes: [], dayEntries: {} };
   if (!raw) return fallback;
   try {
-    const parsed = JSON.parse(raw);
-    return {
-      wishes: Array.isArray(parsed.wishes) ? parsed.wishes : [],
-      dones: Array.isArray(parsed.dones) ? parsed.dones : [],
-      dayEntries: parsed.dayEntries && typeof parsed.dayEntries === 'object' ? parsed.dayEntries : {}
-    };
+    return normalizeData(JSON.parse(raw));
   } catch {
     return fallback;
   }
+}
+
+function normalizeData(data) {
+  const wishes = Array.isArray(data.wishes) ? data.wishes.map(normalizeWish).filter(Boolean) : [];
+  const dayEntries = data.dayEntries && typeof data.dayEntries === 'object'
+    ? Object.fromEntries(
+        Object.entries(data.dayEntries)
+          .map(([dateKey, entry]) => [dateKey, normalizeDayEntry(dateKey, entry)])
+          .filter(([, entry]) => entry)
+      )
+    : {};
+
+  if (Array.isArray(data.dones)) {
+    data.dones.forEach(item => {
+      const dateKey = normalizeDateKey(item.date || item.doneDate || item.movedAt || item.createdAt);
+      if (!dateKey) return;
+      if (!dayEntries[dateKey]) {
+        dayEntries[dateKey] = normalizeDayEntry(dateKey, {
+          title: item.text || '記録',
+          note: item.note || '',
+          updatedAt: item.movedAt || item.createdAt || new Date().toISOString(),
+          photos: []
+        });
+      }
+    });
+  }
+
+  return { wishes, dayEntries };
+}
+
+function normalizeWish(item) {
+  if (!item) return null;
+  const text = typeof item === 'string' ? item : item.text;
+  if (!text) return null;
+  return {
+    id: item.id || uid('wish'),
+    text: String(text),
+    targetDate: item.targetDate || normalizeDateKey(item.date) || '',
+    comment: item.comment || '',
+    createdAt: item.createdAt || new Date().toISOString()
+  };
+}
+
+function normalizeDayEntry(dateKey, entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  const singlePhoto = entry.photo?.fileId ? [{ ...entry.photo }] : [];
+  const photos = Array.isArray(entry.photos)
+    ? entry.photos.filter(photo => photo && photo.fileId)
+    : singlePhoto;
+
+  return {
+    title: entry.title || '',
+    note: entry.note || entry.doneItems || '',
+    photos,
+    updatedAt: entry.updatedAt || new Date().toISOString()
+  };
 }
 
 function saveLocalData() {
@@ -62,17 +122,31 @@ function toDateKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
+function normalizeDateKey(value) {
+  if (!value) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return toDateKey(date);
+}
+
 function formatDateLabel(dateKey) {
-  const d = new Date(`${dateKey}T00:00:00`);
-  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`; 
+  const date = new Date(`${dateKey}T00:00:00`);
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
+function formatDateShort(dateKey) {
+  if (!dateKey) return '日付未設定';
+  const date = new Date(`${dateKey}T00:00:00`);
+  return `${date.getMonth() + 1}/${date.getDate()}`;
 }
 
 function uid(prefix) {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  return `${prefix}_${Math.random().toString(36).slice(2, 10)}_${Date.now()}`;
 }
 
-function escapeHtml(text) {
-  return String(text)
+function escapeHtml(value) {
+  return String(value ?? '')
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
@@ -80,210 +154,219 @@ function escapeHtml(text) {
     .replaceAll("'", '&#39;');
 }
 
-async function startDriveAuth() {
-  const res = await fetch('/api/drive/auth', { credentials: 'include' });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Drive auth failed');
-  window.location.href = data.authUrl;
+function getEntry(dateKey) {
+  return state.data.dayEntries[dateKey] || null;
 }
 
-async function syncToDrive() {
-  el.driveSyncBtn.disabled = true;
-  el.driveSyncBtn.textContent = '保存中...';
-
-  const dayEntry = state.data.dayEntries[state.selectedDate];
-  if (state.pendingPhoto && dayEntry) {
-    const uploaded = await uploadDayPhoto(state.selectedDate, state.pendingPhoto);
-    dayEntry.photo = {
-      fileId: uploaded.file.id,
-      mimeType: uploaded.file.mimeType,
-      name: uploaded.file.name,
-      updatedAt: uploaded.file.modifiedTime || new Date().toISOString()
-    };
-    state.pendingPhoto = null;
-    saveLocalData();
-  }
-
-  const res = await fetch('/api/drive/memories/save', {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ data: state.data })
-  });
-  const result = await res.json();
-  if (!res.ok) throw new Error(result.error || 'Drive save failed');
-
-  el.driveSyncBtn.textContent = '保存完了';
-  setTimeout(() => {
-    el.driveSyncBtn.disabled = false;
-    el.driveSyncBtn.textContent = 'Driveに保存';
-  }, 1200);
-}
-
-async function loadFromDrive() {
-  const res = await fetch('/api/drive/memories/load', { credentials: 'include' });
-  const result = await res.json();
-  if (!res.ok) return;
-  if (result.data) {
-    state.data = normalizeData(result.data);
-    saveLocalData();
-    renderAll();
-  }
-}
-
-function normalizeData(data) {
-  return {
-    wishes: Array.isArray(data.wishes) ? data.wishes : [],
-    dones: Array.isArray(data.dones) ? data.dones : [],
-    dayEntries: data.dayEntries && typeof data.dayEntries === 'object' ? data.dayEntries : {}
-  };
-}
-
-async function uploadDayPhoto(date, pendingPhoto) {
-  const res = await fetch('/api/drive/photos/upload', {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      date,
-      base64DataUrl: pendingPhoto.dataUrl,
-      originalFileName: pendingPhoto.originalFileName,
-      mimeType: pendingPhoto.mimeType
-    })
-  });
-  const result = await res.json();
-  if (!res.ok) throw new Error(result.error || 'Photo upload failed');
-  return result;
+function hasDayContent(entry) {
+  if (!entry) return false;
+  return Boolean(entry.title?.trim() || entry.note?.trim() || (entry.photos && entry.photos.length));
 }
 
 function buildPhotoUrl(fileId) {
   return `/api/drive/photos/load?fileId=${encodeURIComponent(fileId)}`;
 }
 
-function addWish(text) {
-  state.data.wishes.unshift({ id: uid('wish'), text, createdAt: new Date().toISOString() });
-  saveLocalData();
-  renderLists();
+async function startDriveAuth() {
+  const response = await fetch('/api/drive/auth');
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || 'Google Drive連携に失敗しました。');
+  }
+  const data = await response.json();
+  if (!data.url) throw new Error('認証URLを取得できませんでした。');
+  window.location.href = data.url;
 }
 
-function addDone(text) {
-  state.data.dones.unshift({ id: uid('done'), text, createdAt: new Date().toISOString() });
-  saveLocalData();
-  renderLists();
+async function loadFromDrive() {
+  try {
+    const response = await fetch('/api/drive/memories/load');
+    if (!response.ok) return;
+    const remote = await response.json();
+    if (!remote || !remote.data) return;
+
+    state.data = normalizeData(remote.data);
+    saveLocalData();
+    renderAll();
+  } catch (error) {
+    console.warn('Drive load skipped:', error);
+  }
 }
 
-function removeItem(type, id) {
-  state.data[type] = state.data[type].filter(item => item.id !== id);
-  saveLocalData();
-  renderLists();
+async function persistToDriveSilently() {
+  try {
+    await fetch('/api/drive/memories/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: state.data })
+    });
+  } catch (error) {
+    console.warn('Drive save skipped:', error);
+  }
 }
 
-function moveWishToDone(id) {
-  const item = state.data.wishes.find(entry => entry.id === id);
-  if (!item) return;
-  state.data.wishes = state.data.wishes.filter(entry => entry.id !== id);
-  state.data.dones.unshift({ ...item, id: uid('done'), movedAt: new Date().toISOString() });
-  saveLocalData();
-  renderLists();
+async function uploadDayPhoto(dateKey, pendingPhoto) {
+  const response = await fetch('/api/drive/photos/upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      dateKey,
+      dataUrl: pendingPhoto.dataUrl,
+      originalFileName: pendingPhoto.originalFileName,
+      mimeType: pendingPhoto.mimeType
+    })
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || '写真アップロードに失敗しました。');
+  }
+
+  return response.json();
 }
 
-function renderLists() {
-  el.wishCount.textContent = state.data.wishes.length;
-  el.doneCount.textContent = state.data.dones.length;
-
-  el.wishList.innerHTML = state.data.wishes.length
-    ? state.data.wishes.map(item => `
-      <div class="list-item">
-        <div class="list-item-main">
-          <div>${escapeHtml(item.text)}</div>
-          <div class="list-item-sub">${new Date(item.createdAt).toLocaleDateString('ja-JP')}</div>
-        </div>
-        <div class="list-actions">
-          <button class="small-btn" data-action="complete-wish" data-id="${item.id}">達成</button>
-          <button class="small-btn" data-action="delete-wish" data-id="${item.id}">削除</button>
-        </div>
-      </div>`).join('')
-    : '<div class="list-item-sub">まだ登録がありません。</div>';
-
-  el.doneList.innerHTML = state.data.dones.length
-    ? state.data.dones.map(item => `
-      <div class="list-item">
-        <div class="list-item-main">
-          <div>${escapeHtml(item.text)}</div>
-          <div class="list-item-sub">${new Date(item.movedAt || item.createdAt).toLocaleDateString('ja-JP')}</div>
-        </div>
-        <div class="list-actions">
-          <button class="small-btn" data-action="delete-done" data-id="${item.id}">削除</button>
-        </div>
-      </div>`).join('')
-    : '<div class="list-item-sub">まだ登録がありません。</div>';
+function setActiveTab(tab) {
+  state.activeTab = tab;
+  el.doneTabBtn.classList.toggle('active', tab === 'done');
+  el.wishTabBtn.classList.toggle('active', tab === 'wish');
+  el.doneTab.classList.toggle('active', tab === 'done');
+  el.wishTab.classList.toggle('active', tab === 'wish');
 }
 
 function renderWeekdays() {
-  el.weekdayRow.innerHTML = weekNames.map(name => `<div class="calendar-weekday">${name}</div>`).join('');
-}
-
-function getMonthMatrix(year, month) {
-  const firstDay = new Date(year, month, 1);
-  const firstWeekday = firstDay.getDay();
-  const startDate = new Date(year, month, 1 - firstWeekday);
-  const days = [];
-  for (let i = 0; i < 42; i += 1) {
-    const current = new Date(startDate);
-    current.setDate(startDate.getDate() + i);
-    days.push(current);
-  }
-  return days;
+  el.weekdayRow.innerHTML = weekNames
+    .map(name => `<div class="weekday-cell">${name}</div>`)
+    .join('');
 }
 
 function renderCalendar() {
-  el.monthLabel.textContent = `${state.cursorYear}年${state.cursorMonth + 1}月`;
-  const days = getMonthMatrix(state.cursorYear, state.cursorMonth);
+  const firstDay = new Date(state.cursorYear, state.cursorMonth, 1);
+  const lastDay = new Date(state.cursorYear, state.cursorMonth + 1, 0);
+  const startWeekday = firstDay.getDay();
+  const daysInMonth = lastDay.getDate();
 
-  el.calendarGrid.innerHTML = days.map(date => {
+  el.monthLabel.textContent = `${state.cursorYear}年 ${state.cursorMonth + 1}月`;
+
+  const cells = [];
+
+  for (let i = 0; i < startWeekday; i += 1) {
+    cells.push('<div class="calendar-spacer"></div>');
+  }
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const date = new Date(state.cursorYear, state.cursorMonth, day);
     const dateKey = toDateKey(date);
-    const entry = state.data.dayEntries[dateKey];
-    const isOther = date.getMonth() !== state.cursorMonth;
-    const isSelected = dateKey === state.selectedDate;
-    return `
-      <button class="calendar-cell ${isOther ? 'other-month' : ''} ${isSelected ? 'selected' : ''}" data-date="${dateKey}" type="button">
-        <div class="calendar-day-number">${date.getDate()}</div>
-        ${entry ? '<div class="calendar-chip">記録あり</div>' : ''}
-        <div class="calendar-title">${entry?.title ? escapeHtml(entry.title) : ''}</div>
+    const entry = getEntry(dateKey);
+    const selected = dateKey === state.selectedDate;
+    const hasContent = hasDayContent(entry);
+    const todayMatch = dateKey === toDateKey(today);
+
+    cells.push(`
+      <button
+        type="button"
+        class="calendar-cell${selected ? ' selected' : ''}${hasContent ? ' has-entry' : ''}${todayMatch ? ' today' : ''}"
+        data-date="${dateKey}"
+      >
+        <span class="calendar-day-number">${day}</span>
+        ${hasContent ? '<span class="calendar-dot"></span>' : ''}
       </button>
-    `;
-  }).join('');
+    `);
+  }
+
+  el.calendarGrid.innerHTML = cells.join('');
+}
+
+function renderPhotoPreviewGrid() {
+  const entry = getEntry(state.selectedDate);
+  const storedPhotos = entry?.photos || [];
+  const pendingPhotos = state.pendingPhotos || [];
+
+  const tiles = [
+    ...storedPhotos.map(photo => ({
+      kind: 'stored',
+      fileId: photo.fileId,
+      name: photo.name || '',
+      src: buildPhotoUrl(photo.fileId)
+    })),
+    ...pendingPhotos.map(photo => ({
+      kind: 'pending',
+      tempId: photo.tempId,
+      name: photo.originalFileName || '',
+      src: photo.dataUrl
+    }))
+  ];
+
+  el.photoPreviewGrid.innerHTML = tiles.map(tile => `
+    <div class="photo-tile">
+      <img src="${escapeHtml(tile.src)}" alt="${escapeHtml(tile.name || 'photo')}" />
+      <button class="remove-photo-btn" type="button" data-action="remove-photo" data-kind="${tile.kind}" data-id="${escapeHtml(tile.fileId || tile.tempId)}">×</button>
+    </div>
+  `).join('');
+
+  el.photoEmpty.style.display = tiles.length ? 'none' : 'block';
 }
 
 function renderSelectedDay() {
-  const entry = state.data.dayEntries[state.selectedDate] || {};
+  const entry = getEntry(state.selectedDate) || { title: '', note: '' };
   el.detailDateLabel.textContent = formatDateLabel(state.selectedDate);
-  el.dayStatusBadge.textContent = entry.title || entry.note || entry.doneItems ? '記録済み' : '未記録';
-  el.dayStatusBadge.className = `badge ${entry.title || entry.note || entry.doneItems ? '' : 'muted'}`;
-
   el.dayTitleInput.value = entry.title || '';
   el.dayNoteInput.value = entry.note || '';
-  el.dayDoneItemsInput.value = entry.doneItems || '';
+  renderPhotoPreviewGrid();
+}
 
-  if (entry.photo?.fileId) {
-    el.photoPreview.src = buildPhotoUrl(entry.photo.fileId);
-    el.photoPreview.classList.remove('hidden');
-    el.photoEmpty.classList.add('hidden');
-  } else if (state.pendingPhoto?.dataUrl) {
-    el.photoPreview.src = state.pendingPhoto.dataUrl;
-    el.photoPreview.classList.remove('hidden');
-    el.photoEmpty.classList.add('hidden');
-  } else {
-    el.photoPreview.removeAttribute('src');
-    el.photoPreview.classList.add('hidden');
-    el.photoEmpty.classList.remove('hidden');
-  }
+function getDoneEntries() {
+  return Object.entries(state.data.dayEntries)
+    .filter(([, entry]) => hasDayContent(entry))
+    .sort((a, b) => b[0].localeCompare(a[0]));
+}
+
+function renderDoneList() {
+  const doneEntries = getDoneEntries();
+  el.doneCount.textContent = doneEntries.length;
+  el.doneList.innerHTML = doneEntries.length
+    ? doneEntries.map(([dateKey, entry]) => `
+      <div class="card-item">
+        <div class="card-main">
+          <div class="card-title">${escapeHtml(entry.title || 'タイトル未設定')}</div>
+          <div class="card-meta">
+            <span>${formatDateLabel(dateKey)}</span>
+            ${entry.photos?.length ? `<span>${entry.photos.length}枚の写真</span>` : ''}
+          </div>
+          ${entry.note ? `<div class="card-note">${escapeHtml(entry.note)}</div>` : ''}
+        </div>
+        <div class="card-actions">
+          <button class="small-btn" type="button" data-action="open-day" data-date="${dateKey}">見る</button>
+          <button class="small-btn" type="button" data-action="delete-day" data-date="${dateKey}">削除</button>
+        </div>
+      </div>`).join('')
+    : '<div class="empty-state">まだ記録がありません。</div>';
+}
+
+function renderWishList() {
+  el.wishCount.textContent = state.data.wishes.length;
+  el.wishList.innerHTML = state.data.wishes.length
+    ? state.data.wishes.map(item => `
+      <div class="card-item">
+        <div class="card-main">
+          <div class="card-title">${escapeHtml(item.text)}</div>
+          <div class="card-meta">
+            <span>追加日 ${new Date(item.createdAt).toLocaleDateString('ja-JP')}</span>
+            ${item.targetDate ? `<span>候補日 ${formatDateShort(item.targetDate)}</span>` : ''}
+          </div>
+          ${item.comment ? `<div class="card-note">${escapeHtml(item.comment)}</div>` : ''}
+        </div>
+        <div class="card-actions">
+          <button class="small-btn" type="button" data-action="delete-wish" data-id="${item.id}">削除</button>
+        </div>
+      </div>`).join('')
+    : '<div class="empty-state">まだ登録がありません。</div>';
 }
 
 function renderAll() {
-  renderLists();
+  renderWishList();
   renderCalendar();
   renderSelectedDay();
+  renderDoneList();
 }
 
 function ensureDayEntry(dateKey) {
@@ -291,8 +374,7 @@ function ensureDayEntry(dateKey) {
     state.data.dayEntries[dateKey] = {
       title: '',
       note: '',
-      doneItems: '',
-      photo: null,
+      photos: [],
       updatedAt: new Date().toISOString()
     };
   }
@@ -304,83 +386,169 @@ async function handleDayEntrySave(event) {
   const entry = ensureDayEntry(state.selectedDate);
   entry.title = el.dayTitleInput.value.trim();
   entry.note = el.dayNoteInput.value.trim();
-  entry.doneItems = el.dayDoneItemsInput.value.trim();
   entry.updatedAt = new Date().toISOString();
 
-  if (state.pendingPhoto) {
+  if (state.pendingPhotos.length) {
     try {
-      const uploaded = await uploadDayPhoto(state.selectedDate, state.pendingPhoto);
-      entry.photo = {
-        fileId: uploaded.file.id,
-        mimeType: uploaded.file.mimeType,
-        name: uploaded.file.name,
-        updatedAt: uploaded.file.modifiedTime || new Date().toISOString()
-      };
-      state.pendingPhoto = null;
+      const uploadedPhotos = [];
+      for (const pendingPhoto of state.pendingPhotos) {
+        const file = await uploadDayPhoto(state.selectedDate, pendingPhoto);
+        uploadedPhotos.push({
+          fileId: file.id,
+          mimeType: file.mimeType,
+          name: file.name,
+          updatedAt: file.modifiedTime || new Date().toISOString()
+        });
+      }
+      entry.photos = [...(entry.photos || []), ...uploadedPhotos];
+      state.pendingPhotos = [];
+      el.photoInput.value = '';
     } catch (error) {
       alert(`写真の保存に失敗しました: ${error.message}`);
       return;
     }
   }
 
+  if (!hasDayContent(entry)) {
+    delete state.data.dayEntries[state.selectedDate];
+  }
+
   saveLocalData();
   renderAll();
+  await persistToDriveSilently();
 }
 
 function clearDayEntryInputs() {
   el.dayTitleInput.value = '';
   el.dayNoteInput.value = '';
-  el.dayDoneItemsInput.value = '';
   el.photoInput.value = '';
-  state.pendingPhoto = null;
+  state.pendingPhotos = [];
   renderSelectedDay();
 }
 
 async function handlePhotoChange(event) {
-  const file = event.target.files?.[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    state.pendingPhoto = {
+  const files = Array.from(event.target.files || []);
+  if (!files.length) return;
+
+  const reads = files.map(file => new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({
+      tempId: uid('pending_photo'),
       dataUrl: reader.result,
       originalFileName: file.name || '',
       mimeType: file.type || ''
-    };
-    renderSelectedDay();
-  };
-  reader.readAsDataURL(file);
+    });
+    reader.readAsDataURL(file);
+  }));
+
+  const loadedPhotos = await Promise.all(reads);
+  state.pendingPhotos = [...state.pendingPhotos, ...loadedPhotos];
+  renderPhotoPreviewGrid();
+  el.photoInput.value = '';
+}
+
+function removeWish(id) {
+  state.data.wishes = state.data.wishes.filter(item => item.id !== id);
+  saveLocalData();
+  renderWishList();
+  persistToDriveSilently();
+}
+
+function removeDay(dateKey) {
+  delete state.data.dayEntries[dateKey];
+  if (dateKey === state.selectedDate) {
+    state.pendingPhotos = [];
+    el.photoInput.value = '';
+  }
+  saveLocalData();
+  renderAll();
+  persistToDriveSilently();
+}
+
+function handleRemovePhoto(kind, id) {
+  if (kind === 'pending') {
+    state.pendingPhotos = state.pendingPhotos.filter(photo => photo.tempId !== id);
+    renderPhotoPreviewGrid();
+    return;
+  }
+
+  const entry = getEntry(state.selectedDate);
+  if (!entry) return;
+  entry.photos = (entry.photos || []).filter(photo => photo.fileId !== id);
+  saveLocalData();
+  renderPhotoPreviewGrid();
+  renderDoneList();
+  renderCalendar();
+  persistToDriveSilently();
+}
+
+function openDayModal(dateKey) {
+  const entry = getEntry(dateKey);
+  if (!entry) return;
+  state.selectedDate = dateKey;
+  renderCalendar();
+  renderSelectedDay();
+
+  el.modalDateLabel.textContent = formatDateLabel(dateKey);
+  el.modalSubtitle.textContent = entry.updatedAt ? `最終更新 ${new Date(entry.updatedAt).toLocaleString('ja-JP')}` : '';
+  el.modalTitle.textContent = entry.title || 'タイトル未設定';
+  el.modalNote.textContent = entry.note || 'メモはありません。';
+  el.modalPhotoGrid.innerHTML = (entry.photos || []).length
+    ? entry.photos.map(photo => `
+      <div class="photo-tile">
+        <img src="${escapeHtml(buildPhotoUrl(photo.fileId))}" alt="${escapeHtml(photo.name || 'photo')}" />
+      </div>
+    `).join('')
+    : '<div class="empty-state">写真はありません。</div>';
+
+  if (typeof el.dayModal.showModal === 'function') {
+    el.dayModal.showModal();
+  }
 }
 
 function bindEvents() {
-  el.wishForm.addEventListener('submit', event => {
-    event.preventDefault();
-    const value = el.wishInput.value.trim();
-    if (!value) return;
-    addWish(value);
-    el.wishInput.value = '';
-  });
+  el.doneTabBtn.addEventListener('click', () => setActiveTab('done'));
+  el.wishTabBtn.addEventListener('click', () => setActiveTab('wish'));
 
-  el.doneForm.addEventListener('submit', event => {
+  el.wishForm.addEventListener('submit', async event => {
     event.preventDefault();
-    const value = el.doneInput.value.trim();
-    if (!value) return;
-    addDone(value);
-    el.doneInput.value = '';
+    const text = el.wishInput.value.trim();
+    if (!text) return;
+
+    state.data.wishes.unshift({
+      id: uid('wish'),
+      text,
+      targetDate: el.wishDateInput.value,
+      comment: el.wishCommentInput.value.trim(),
+      createdAt: new Date().toISOString()
+    });
+
+    el.wishInput.value = '';
+    el.wishDateInput.value = '';
+    el.wishCommentInput.value = '';
+    saveLocalData();
+    renderWishList();
+    await persistToDriveSilently();
   });
 
   document.addEventListener('click', event => {
-    const action = event.target.dataset.action;
-    const id = event.target.dataset.id;
-    if (action === 'complete-wish') moveWishToDone(id);
-    if (action === 'delete-wish') removeItem('wishes', id);
-    if (action === 'delete-done') removeItem('dones', id);
+    const button = event.target.closest('button');
+    if (!button) return;
 
-    const date = event.target.dataset.date;
-    if (date) {
+    const { action, id, date, kind, tab } = button.dataset;
+    if (tab) setActiveTab(tab);
+    if (action === 'delete-wish' && id) removeWish(id);
+    if (action === 'open-day' && date) openDayModal(date);
+    if (action === 'delete-day' && date) removeDay(date);
+    if (action === 'remove-photo' && id) handleRemovePhoto(kind, id);
+
+    if (date && button.classList.contains('calendar-cell')) {
       state.selectedDate = date;
-      state.pendingPhoto = null;
+      state.pendingPhotos = [];
+      el.photoInput.value = '';
       renderCalendar();
       renderSelectedDay();
+      if (hasDayContent(getEntry(date))) openDayModal(date);
     }
   });
 
@@ -408,14 +576,12 @@ function bindEvents() {
       alert(error.message);
     }
   });
-  el.driveSyncBtn.addEventListener('click', async () => {
-    try {
-      await syncToDrive();
-    } catch (error) {
-      alert(`Drive保存に失敗しました: ${error.message}`);
-      el.driveSyncBtn.disabled = false;
-      el.driveSyncBtn.textContent = 'Driveに保存';
-    }
+
+  el.closeModalBtn.addEventListener('click', () => el.dayModal.close());
+  el.dayModal.addEventListener('click', event => {
+    const rect = el.dayModal.querySelector('.day-modal-card').getBoundingClientRect();
+    const isInside = rect.top <= event.clientY && event.clientY <= rect.bottom && rect.left <= event.clientX && event.clientX <= rect.right;
+    if (!isInside) el.dayModal.close();
   });
 }
 
