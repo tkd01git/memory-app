@@ -1,5 +1,5 @@
 import { google } from 'googleapis';
-import { Readable } from 'stream';
+import { PassThrough } from 'stream';
 
 export function json(res, status, body) {
   res.status(status).setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -86,17 +86,27 @@ export async function getOrCreateFolder(drive, folderName, parentId = null) {
   return res.data;
 }
 
+// Buffer を PassThrough ストリームに変換する
+// googleapis の media.body は Readable Stream を要求するため必要
+function bufferToStream(buffer) {
+  const stream = new PassThrough();
+  stream.end(buffer);
+  return stream;
+}
+
 export async function saveJsonFile(drive, name, data, parentId = null) {
   const existing = await findFileByName(drive, name, parentId);
-  const media = {
+  const jsonBuffer = Buffer.from(JSON.stringify(data, null, 2), 'utf-8');
+
+  const makeMedia = () => ({
     mimeType: 'application/json',
-    body: Readable.from([JSON.stringify(data, null, 2)])
-  };
+    body: bufferToStream(jsonBuffer)
+  });
 
   if (existing?.id) {
     const res = await drive.files.update({
       fileId: existing.id,
-      media,
+      media: makeMedia(),
       fields: 'id,name,modifiedTime'
     });
     return res.data;
@@ -107,7 +117,7 @@ export async function saveJsonFile(drive, name, data, parentId = null) {
 
   const res = await drive.files.create({
     requestBody,
-    media,
+    media: makeMedia(),
     fields: 'id,name,modifiedTime'
   });
   return res.data;
@@ -129,13 +139,15 @@ export async function loadJsonFile(drive, name, parentId = null) {
 export async function saveImageFile({ drive, folderId, fileName, mimeType, buffer }) {
   const existing = await findFileByName(drive, fileName, folderId);
 
-  // googleapis の media.body には Buffer ではなく Readable Stream を渡す必要がある
-  const makeStream = () => Readable.from([buffer]);
+  const makeMedia = () => ({
+    mimeType,
+    body: bufferToStream(Buffer.from(buffer))
+  });
 
   if (existing?.id) {
     const res = await drive.files.update({
       fileId: existing.id,
-      media: { mimeType, body: makeStream() },
+      media: makeMedia(),
       fields: 'id,name,mimeType,modifiedTime,size'
     });
     return res.data;
@@ -147,7 +159,7 @@ export async function saveImageFile({ drive, folderId, fileName, mimeType, buffe
       parents: [folderId],
       mimeType
     },
-    media: { mimeType, body: makeStream() },
+    media: makeMedia(),
     fields: 'id,name,mimeType,modifiedTime,size'
   });
   return res.data;
