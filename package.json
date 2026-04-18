@@ -2,6 +2,9 @@
   "name": "memory-shared-app",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "20.x"
+  },
   "dependencies": {
     "googleapis": "^144.0.0"
   }
