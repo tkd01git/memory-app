@@ -10,7 +10,7 @@ const state = {
   cursorMonth: today.getMonth(),
   selectedDate: toDateKey(today),
   activeTab: 'done',
-  pendingPhoto: null,
+  pendingPhotos: [],
   data: loadLocalData()
 };
 
@@ -21,7 +21,6 @@ const el = {
   wishTab: document.getElementById('wishTab'),
   wishForm: document.getElementById('wishForm'),
   wishInput: document.getElementById('wishInput'),
-  wishDateInput: document.getElementById('wishDateInput'),
   wishCommentInput: document.getElementById('wishCommentInput'),
   wishList: document.getElementById('wishList'),
   wishCount: document.getElementById('wishCount'),
@@ -81,7 +80,6 @@ function normalizeWish(item) {
   return {
     id: item.id || uid('wish'),
     text: String(text),
-    targetDate: item.targetDate || normalizeDateKey(item.date) || '',
     comment: item.comment || '',
     createdAt: item.createdAt || new Date().toISOString()
   };
@@ -90,17 +88,16 @@ function normalizeWish(item) {
 function normalizeDayEntry(entry) {
   if (!entry || typeof entry !== 'object') return null;
 
-  let photo = null;
-  if (entry.photo && entry.photo.fileId) {
-    photo = entry.photo;
-  } else if (Array.isArray(entry.photos) && entry.photos[0] && entry.photos[0].fileId) {
-    photo = entry.photos[0];
-  }
+  const photos = Array.isArray(entry.photos)
+    ? entry.photos.filter(photo => photo && photo.fileId)
+    : entry.photo && entry.photo.fileId
+      ? [entry.photo]
+      : [];
 
   return {
     title: entry.title || '',
     note: entry.note || '',
-    photo,
+    photos,
     updatedAt: entry.updatedAt || new Date().toISOString()
   };
 }
@@ -113,23 +110,9 @@ function toDateKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function normalizeDateKey(value) {
-  if (!value) return '';
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return toDateKey(date);
-}
-
 function formatDateLabel(dateKey) {
   const date = new Date(`${dateKey}T00:00:00`);
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
-}
-
-function formatDateShort(dateKey) {
-  if (!dateKey) return '日付未設定';
-  const date = new Date(`${dateKey}T00:00:00`);
-  return `${date.getMonth() + 1}/${date.getDate()}`;
 }
 
 function uid(prefix) {
@@ -151,7 +134,7 @@ function getEntry(dateKey) {
 
 function hasDayContent(entry) {
   if (!entry) return false;
-  return Boolean(entry.title?.trim() || entry.note?.trim() || entry.photo?.fileId);
+  return Boolean(entry.title?.trim() || entry.note?.trim() || (entry.photos && entry.photos.length));
 }
 
 function buildPhotoUrl(fileId) {
@@ -280,23 +263,37 @@ function renderCalendar() {
 
 function renderPhotoPreviewGrid() {
   const entry = getEntry(state.selectedDate);
-  const photo = state.pendingPhoto || entry?.photo || null;
+  const storedPhotos = entry?.photos || [];
+  const pendingPhotos = state.pendingPhotos || [];
 
-  if (!photo) {
+  const tiles = [
+    ...storedPhotos.map(photo => ({
+      kind: 'stored',
+      id: photo.fileId,
+      src: buildPhotoUrl(photo.fileId),
+      name: photo.name || 'photo'
+    })),
+    ...pendingPhotos.map(photo => ({
+      kind: 'pending',
+      id: photo.tempId,
+      src: photo.dataUrl,
+      name: photo.originalFileName || 'photo'
+    }))
+  ];
+
+  if (!tiles.length) {
     el.photoPreviewGrid.innerHTML = '';
     el.photoEmpty.style.display = 'block';
     return;
   }
 
-  const src = photo.fileId ? buildPhotoUrl(photo.fileId) : photo.dataUrl;
-  const photoId = photo.fileId || photo.tempId;
-
-  el.photoPreviewGrid.innerHTML = `
+  el.photoPreviewGrid.innerHTML = tiles.map(tile => `
     <div class="photo-tile">
-      <img src="${escapeHtml(src)}" alt="${escapeHtml(photo.name || photo.originalFileName || 'photo')}" />
-      <button class="remove-photo-btn" type="button" data-action="remove-photo" data-id="${escapeHtml(photoId)}">×</button>
+      <img src="${escapeHtml(tile.src)}" alt="${escapeHtml(tile.name)}" />
+      <button class="remove-photo-btn" type="button" data-action="remove-photo" data-kind="${tile.kind}" data-id="${escapeHtml(tile.id)}">×</button>
     </div>
-  `;
+  `).join('');
+
   el.photoEmpty.style.display = 'none';
 }
 
@@ -324,7 +321,7 @@ function renderDoneList() {
           <div class="card-title">${escapeHtml(entry.title || 'タイトル未設定')}</div>
           <div class="card-meta">
             <span>${formatDateLabel(dateKey)}</span>
-            ${entry.photo?.fileId ? '<span>写真あり</span>' : ''}
+            ${entry.photos?.length ? `<span>${entry.photos.length}枚</span>` : ''}
           </div>
           ${entry.note ? `<div class="card-note">${escapeHtml(entry.note)}</div>` : ''}
         </div>
@@ -344,10 +341,6 @@ function renderWishList() {
       <div class="card-item">
         <div class="card-main">
           <div class="card-title">${escapeHtml(item.text)}</div>
-          <div class="card-meta">
-            <span>追加日 ${new Date(item.createdAt).toLocaleDateString('ja-JP')}</span>
-            ${item.targetDate ? `<span>候補日 ${formatDateShort(item.targetDate)}</span>` : ''}
-          </div>
           ${item.comment ? `<div class="card-note">${escapeHtml(item.comment)}</div>` : ''}
         </div>
         <div class="card-actions">
@@ -370,7 +363,7 @@ function ensureDayEntry(dateKey) {
     state.data.dayEntries[dateKey] = {
       title: '',
       note: '',
-      photo: null,
+      photos: [],
       updatedAt: new Date().toISOString()
     };
   }
@@ -443,16 +436,20 @@ async function handleDayEntrySave(event) {
   entry.note = el.dayNoteInput.value.trim();
   entry.updatedAt = new Date().toISOString();
 
-  if (state.pendingPhoto) {
+  if (state.pendingPhotos.length) {
     try {
-      const file = await uploadDayPhoto(state.selectedDate, state.pendingPhoto);
-      entry.photo = {
-        fileId: file.id,
-        mimeType: file.mimeType,
-        name: file.name,
-        updatedAt: file.modifiedTime || new Date().toISOString()
-      };
-      state.pendingPhoto = null;
+      const uploaded = [];
+      for (const pendingPhoto of state.pendingPhotos) {
+        const file = await uploadDayPhoto(state.selectedDate, pendingPhoto);
+        uploaded.push({
+          fileId: file.id,
+          mimeType: file.mimeType,
+          name: file.name,
+          updatedAt: file.modifiedTime || new Date().toISOString()
+        });
+      }
+      entry.photos = [...(entry.photos || []), ...uploaded];
+      state.pendingPhotos = [];
       el.photoInput.value = '';
     } catch (error) {
       alert(`写真の保存に失敗しました: ${error.message}`);
@@ -473,18 +470,23 @@ function clearDayEntryInputs() {
   el.dayTitleInput.value = '';
   el.dayNoteInput.value = '';
   el.photoInput.value = '';
-  state.pendingPhoto = null;
+  state.pendingPhotos = [];
   renderSelectedDay();
 }
 
 async function handlePhotoChange(event) {
-  const file = event.target.files?.[0];
-  if (!file) return;
+  const files = Array.from(event.target.files || []);
+  if (!files.length) return;
 
   try {
-    const compressed = await compressImageForUpload(file);
-    state.pendingPhoto = compressed;
+    const compressedList = [];
+    for (const file of files) {
+      const compressed = await compressImageForUpload(file);
+      compressedList.push(compressed);
+    }
+    state.pendingPhotos = [...state.pendingPhotos, ...compressedList];
     renderPhotoPreviewGrid();
+    event.target.value = '';
   } catch (error) {
     alert(error.message);
     event.target.value = '';
@@ -501,7 +503,7 @@ function removeWish(id) {
 function removeDay(dateKey) {
   delete state.data.dayEntries[dateKey];
   if (dateKey === state.selectedDate) {
-    state.pendingPhoto = null;
+    state.pendingPhotos = [];
     el.photoInput.value = '';
   }
   saveLocalData();
@@ -509,30 +511,28 @@ function removeDay(dateKey) {
   persistToDriveSilently();
 }
 
-function handleRemovePhoto(id) {
-  if (state.pendingPhoto && state.pendingPhoto.tempId === id) {
-    state.pendingPhoto = null;
+function handleRemovePhoto(kind, id) {
+  if (kind === 'pending') {
+    state.pendingPhotos = state.pendingPhotos.filter(photo => photo.tempId !== id);
     renderPhotoPreviewGrid();
     return;
   }
 
   const entry = getEntry(state.selectedDate);
-  if (!entry?.photo) return;
-  if (entry.photo.fileId === id) {
-    entry.photo = null;
-    saveLocalData();
-    renderPhotoPreviewGrid();
-    renderDoneList();
-    renderCalendar();
-    persistToDriveSilently();
-  }
+  if (!entry?.photos?.length) return;
+  entry.photos = entry.photos.filter(photo => photo.fileId !== id);
+  saveLocalData();
+  renderPhotoPreviewGrid();
+  renderDoneList();
+  renderCalendar();
+  persistToDriveSilently();
 }
 
 function openDayModal(dateKey) {
   const entry = getEntry(dateKey);
 
   state.selectedDate = dateKey;
-  state.pendingPhoto = null;
+  state.pendingPhotos = [];
   el.photoInput.value = '';
   renderCalendar();
   renderSelectedDay();
@@ -548,12 +548,12 @@ function openDayModal(dateKey) {
     el.modalSubtitle.textContent = entry.updatedAt ? `最終更新 ${new Date(entry.updatedAt).toLocaleString('ja-JP')}` : '';
     el.modalTitle.textContent = entry.title || 'タイトル未設定';
     el.modalNote.textContent = entry.note || '';
-    el.modalPhotoGrid.innerHTML = entry.photo?.fileId
-      ? `
+    el.modalPhotoGrid.innerHTML = entry.photos?.length
+      ? entry.photos.map(photo => `
         <div class="photo-tile">
-          <img src="${escapeHtml(buildPhotoUrl(entry.photo.fileId))}" alt="${escapeHtml(entry.photo.name || 'photo')}" />
+          <img src="${escapeHtml(buildPhotoUrl(photo.fileId))}" alt="${escapeHtml(photo.name || 'photo')}" />
         </div>
-      `
+      `).join('')
       : '';
   }
 
@@ -574,13 +574,11 @@ function bindEvents() {
     state.data.wishes.unshift({
       id: uid('wish'),
       text,
-      targetDate: el.wishDateInput.value,
       comment: el.wishCommentInput.value.trim(),
       createdAt: new Date().toISOString()
     });
 
     el.wishInput.value = '';
-    el.wishDateInput.value = '';
     el.wishCommentInput.value = '';
     saveLocalData();
     renderWishList();
@@ -591,12 +589,12 @@ function bindEvents() {
     const button = event.target.closest('button');
     if (!button) return;
 
-    const { action, id, date } = button.dataset;
+    const { action, id, date, kind } = button.dataset;
 
     if (action === 'delete-wish' && id) removeWish(id);
     if (action === 'open-day' && date) openDayModal(date);
     if (action === 'delete-day' && date) removeDay(date);
-    if (action === 'remove-photo' && id) handleRemovePhoto(id);
+    if (action === 'remove-photo' && id) handleRemovePhoto(kind, id);
 
     if (date && button.classList.contains('calendar-cell')) {
       openDayModal(date);
