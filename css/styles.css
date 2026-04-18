@@ -1,13 +1,15 @@
 :root {
-  --bg: #f6f7fb;
+  --bg: #fff7fa;
   --panel: #ffffff;
-  --panel-border: #e7e9f1;
-  --text: #1e2430;
-  --muted: #6d7485;
-  --primary: #6e7cf6;
-  --primary-soft: #eef1ff;
+  --panel-border: #f0dbe4;
+  --text: #342630;
+  --muted: #8b7280;
+  --primary: #e78fb3;
+  --primary-strong: #d96a99;
+  --primary-soft: #fff0f6;
+  --accent-soft: #fde3ec;
   --danger: #ef5b6c;
-  --shadow: 0 10px 30px rgba(28, 36, 56, 0.07);
+  --shadow: 0 12px 32px rgba(120, 62, 91, 0.08);
   --radius-lg: 20px;
   --radius-md: 14px;
   --radius-sm: 10px;
@@ -21,7 +23,7 @@ html,
 body {
   margin: 0;
   padding: 0;
-  background: linear-gradient(180deg, #fafbff 0%, #f3f5fb 100%);
+  background: linear-gradient(180deg, #fffafc 0%, #fff3f8 100%);
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
 }
@@ -53,21 +55,13 @@ button {
   margin-bottom: 14px;
   min-height: 44px;
 }
+
 .app-brand {
-
   font-size: 22px;
-
   font-weight: 800;
-
   letter-spacing: -0.02em;
-
   color: var(--text);
-
-}
-
-.topbar-title-spacer {
-  width: 1px;
-  height: 1px;
+  padding-left: 8px;
 }
 
 .topbar-actions {
@@ -79,7 +73,7 @@ button {
 .tab-bar {
   display: inline-flex;
   gap: 8px;
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.9);
   border: 1px solid var(--panel-border);
   border-radius: 999px;
   padding: 6px;
@@ -166,7 +160,7 @@ main {
   height: 34px;
   padding: 0 10px;
   background: var(--primary-soft);
-  color: var(--primary);
+  color: var(--primary-strong);
   border-radius: 999px;
   font-weight: 700;
 }
@@ -182,7 +176,7 @@ main {
 }
 
 .ghost-btn {
-  background: #f4f6fb;
+  background: #fff7fa;
   color: var(--text);
   border: 1px solid var(--panel-border);
 }
@@ -193,7 +187,7 @@ main {
 }
 
 .small-btn {
-  background: #f4f6fb;
+  background: #fff7fa;
   color: var(--text);
   padding: 8px 12px;
   border: 1px solid var(--panel-border);
@@ -201,11 +195,11 @@ main {
 
 .ghost-btn:hover,
 .small-btn:hover {
-  background: #eef1f8;
+  background: #ffeef5;
 }
 
 .primary-btn:hover {
-  filter: brightness(0.97);
+  background: var(--primary-strong);
 }
 
 .icon-btn {
@@ -259,8 +253,8 @@ main {
   position: relative;
   aspect-ratio: 1 / 1;
   min-height: 58px;
-  border: 1px solid #e9ecf4;
-  background: #fafbff;
+  border: 1px solid #f0dbe4;
+  background: #fffafc;
   border-radius: 16px;
   display: flex;
   align-items: center;
@@ -270,19 +264,19 @@ main {
 }
 
 .calendar-cell:hover {
-  background: #f2f5ff;
-  border-color: #dfe5ff;
+  background: #fff0f6;
+  border-color: #efc8d8;
   transform: translateY(-1px);
 }
 
 .calendar-cell.selected {
-  border-color: var(--primary);
-  background: #f1f4ff;
-  box-shadow: inset 0 0 0 1px rgba(110, 124, 246, 0.18);
+  border-color: var(--primary-strong);
+  background: #ffe8f0;
+  box-shadow: inset 0 0 0 1px rgba(217, 106, 153, 0.14);
 }
 
 .calendar-cell.today {
-  box-shadow: inset 0 0 0 1px rgba(110, 124, 246, 0.15);
+  box-shadow: inset 0 0 0 1px rgba(217, 106, 153, 0.12);
 }
 
 .calendar-day-number {
@@ -295,23 +289,19 @@ main {
   font-weight: 700;
   line-height: 1;
   color: var(--text);
-  transform: translateY(0);
-}
-
-.calendar-dot {
-  position: absolute;
-  bottom: 8px;
-  left: 50%;
-  width: 6px;
-  height: 6px;
-  margin-left: -3px;
-  border-radius: 999px;
-  background: var(--primary);
 }
 
 .calendar-cell.has-entry {
-  background: linear-gradient(180deg, #fbfcff 0%, #f4f6ff 100%);
-  border-color: #dfe5ff;
+  background: linear-gradient(180deg, #ffeef5 0%, #ffe3ee 100%);
+  border-color: #efc8d8;
+}
+
+.calendar-cell.has-entry .calendar-day-number {
+  color: #8d3f61;
+}
+
+.calendar-dot {
+  display: none;
 }
 
 .day-form-panel {
@@ -331,12 +321,11 @@ main {
 }
 
 input[type="text"],
-input[type="date"],
 textarea,
 input[type="file"] {
   width: 100%;
   border: 1px solid var(--panel-border);
-  background: #fcfdff;
+  background: #fffdfd;
   color: var(--text);
   border-radius: 14px;
   padding: 12px 14px;
@@ -349,8 +338,8 @@ textarea {
 
 input:focus,
 textarea:focus {
-  border-color: #c8d1ff;
-  box-shadow: 0 0 0 4px rgba(110, 124, 246, 0.08);
+  border-color: #efb7cf;
+  box-shadow: 0 0 0 4px rgba(231, 143, 179, 0.12);
 }
 
 .form-actions {
@@ -360,28 +349,17 @@ textarea:focus {
   flex-wrap: wrap;
 }
 
-.hint-text {
-  margin: -2px 0 0;
-  font-size: 12px;
-  color: var(--muted);
-}
-
 .photo-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
-.single-photo-grid {
-  grid-template-columns: minmax(0, 1fr);
-  max-width: 240px;
-}
-
 .photo-tile {
   position: relative;
   border-radius: 16px;
   overflow: hidden;
-  background: #eef1f7;
+  background: #f8eef3;
   border: 1px solid var(--panel-border);
   aspect-ratio: 1 / 1;
 }
@@ -401,7 +379,7 @@ textarea:focus {
   height: 28px;
   border: none;
   border-radius: 999px;
-  background: rgba(20, 24, 36, 0.72);
+  background: rgba(52, 38, 48, 0.72);
   color: #fff;
   font-size: 16px;
   display: inline-flex;
@@ -467,9 +445,9 @@ textarea:focus {
 }
 
 .empty-state {
-  border: 1px dashed #d8deee;
+  border: 1px dashed #f0dbe4;
   border-radius: 16px;
-  background: #fafbff;
+  background: #fff9fb;
   color: var(--muted);
   font-size: 14px;
   padding: 18px;
@@ -483,18 +461,18 @@ textarea:focus {
 }
 
 .day-modal::backdrop {
-  background: rgba(15, 18, 28, 0.34);
+  background: rgba(36, 22, 31, 0.28);
   backdrop-filter: blur(3px);
 }
 
 .day-modal-card {
-  width: min(720px, calc(100vw - 24px));
-  max-height: min(84vh, 920px);
+  width: min(900px, calc(100vw - 24px));
+  max-height: min(88vh, 960px);
   overflow: auto;
   background: #fff;
   border: 1px solid var(--panel-border);
   border-radius: 24px;
-  box-shadow: 0 20px 60px rgba(24, 30, 44, 0.2);
+  box-shadow: 0 20px 60px rgba(84, 43, 63, 0.18);
   padding: 20px;
 }
 
@@ -528,6 +506,7 @@ textarea:focus {
 
 .modal-photo-grid {
   margin-top: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .wish-panel {
@@ -546,6 +525,10 @@ textarea:focus {
 
   .calendar-day-number {
     font-size: 14px;
+  }
+
+  .day-modal-card {
+    width: min(96vw, 96vw);
   }
 }
 
@@ -577,7 +560,8 @@ textarea:focus {
     flex-direction: row;
   }
 
-  .photo-grid {
+  .photo-grid,
+  .modal-photo-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
