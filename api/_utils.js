@@ -1,4 +1,5 @@
 import { google } from 'googleapis';
+import { Readable } from 'stream';
 
 export function json(res, status, body) {
   res.status(status).setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -89,7 +90,7 @@ export async function saveJsonFile(drive, name, data, parentId = null) {
   const existing = await findFileByName(drive, name, parentId);
   const media = {
     mimeType: 'application/json',
-    body: JSON.stringify(data, null, 2)
+    body: Readable.from([JSON.stringify(data, null, 2)])
   };
 
   if (existing?.id) {
@@ -127,12 +128,14 @@ export async function loadJsonFile(drive, name, parentId = null) {
 
 export async function saveImageFile({ drive, folderId, fileName, mimeType, buffer }) {
   const existing = await findFileByName(drive, fileName, folderId);
-  const media = { mimeType, body: Buffer.from(buffer) };
+
+  // googleapis の media.body には Buffer ではなく Readable Stream を渡す必要がある
+  const makeStream = () => Readable.from([buffer]);
 
   if (existing?.id) {
     const res = await drive.files.update({
       fileId: existing.id,
-      media,
+      media: { mimeType, body: makeStream() },
       fields: 'id,name,mimeType,modifiedTime,size'
     });
     return res.data;
@@ -144,7 +147,7 @@ export async function saveImageFile({ drive, folderId, fileName, mimeType, buffe
       parents: [folderId],
       mimeType
     },
-    media,
+    media: { mimeType, body: makeStream() },
     fields: 'id,name,mimeType,modifiedTime,size'
   });
   return res.data;
